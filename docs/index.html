@@ -240,7 +240,7 @@
         <div class="people-row">
           <input type="number" id="travelers_count" min="1" value="1">
           <select id="travelers_type">
-            <option value="solo" id="opt-solo">Da solo</option>
+            <option value="solo">Da solo</option>
             <option value="coppia">In coppia</option>
             <option value="famiglia">In famiglia</option>
             <option value="amici">Con amici</option>
@@ -293,22 +293,44 @@
 
   const countInput = document.getElementById("travelers_count");
   const typeSelect = document.getElementById("travelers_type");
-  const optSolo = document.getElementById("opt-solo");
+
+  // vincoli minimi/massimi per ogni composizione
+  const TYPE_CONSTRAINTS = {
+    solo: { min: 1, max: 1 },
+    coppia: { min: 2, max: 2 },
+    famiglia: { min: 2, max: null },
+    amici: { min: 2, max: null },
+    gruppo: { min: 4, max: null },
+  };
+
+  function syncTypeOptions(count) {
+    [...typeSelect.options].forEach(opt => {
+      const c = TYPE_CONSTRAINTS[opt.value];
+      const invalid = count < c.min || (c.max !== null && count > c.max);
+      opt.disabled = invalid;
+    });
+    // se il tipo selezionato non è più valido, passa al primo valido
+    if (typeSelect.options[typeSelect.selectedIndex].disabled) {
+      const firstValid = [...typeSelect.options].find(o => !o.disabled);
+      if (firstValid) typeSelect.value = firstValid.value;
+    }
+  }
 
   countInput.addEventListener("input", () => {
     const n = Number(countInput.value) || 1;
-    if (n > 1) {
-      optSolo.disabled = true;
-      if (typeSelect.value === "solo") typeSelect.value = "coppia";
-    } else {
-      optSolo.disabled = false;
-    }
+    syncTypeOptions(n);
   });
 
   typeSelect.addEventListener("change", () => {
-    if (typeSelect.value === "solo") countInput.value = 1;
+    const c = TYPE_CONSTRAINTS[typeSelect.value];
+    const n = Number(countInput.value) || 1;
+    if (n < c.min) countInput.value = c.min;
+    if (c.max !== null && n > c.max) countInput.value = c.max;
   });
 
+  // applica subito lo stato iniziale (1 persona → solo le opzioni valide per 1)
+  syncTypeOptions(Number(countInput.value) || 1);
+  
   document.querySelectorAll(".chip").forEach(chip => {
     chip.addEventListener("click", () => {
       chip.classList.toggle("active");
