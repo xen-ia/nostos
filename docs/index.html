@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nostos - test</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1rem; }
+  textarea { width: 100%; height: 120px; font-size: 1rem; padding: 0.75rem; box-sizing: border-box; }
+  button { margin-top: 1rem; padding: 0.6rem 1.4rem; font-size: 1rem; cursor: pointer; }
+  #status { margin-top: 1.5rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>Nostos - test</h1>
+  <textarea id="query" placeholder="Scrivi qui il tuo viaggio ideale..."></textarea>
+  <br>
+  <button id="submit">Invia</button>
+  <div id="status"></div>
+
+<script>
+  const API_BASE = "http://localhost:3072";
+
+  document.getElementById("submit").addEventListener("click", async () => {
+    const query = document.getElementById("query").value.trim();
+    const statusEl = document.getElementById("status");
+    if (!query) return;
+
+    statusEl.textContent = "Invio in corso...";
+    try {
+      const res = await fetch(`${API_BASE}/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const data = await res.json();
+      statusEl.textContent = "Salvato:\n" + JSON.stringify(data, null, 2);
+    } catch (err) {
+      statusEl.textContent = "Errore: " + err.message;
+    }
+  });
+</script>
+</body>
+</html>
