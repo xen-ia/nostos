@@ -3,40 +3,355 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nostos - test</title>
+<title>Nostos — trova il tuo viaggio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1rem; }
-  textarea { width: 100%; height: 120px; font-size: 1rem; padding: 0.75rem; box-sizing: border-box; }
-  button { margin-top: 1rem; padding: 0.6rem 1.4rem; font-size: 1rem; cursor: pointer; }
-  #status { margin-top: 1.5rem; white-space: pre-wrap; }
+  :root {
+    --ink-navy: #1B2A3A;
+    --parchment: #F6EFDD;
+    --parchment-2: #EFE6CE;
+    --terracotta: #C1683D;
+    --olive: #6B7A4F;
+    --gold: #D9A44A;
+    --ink-text: #2B2118;
+    --ink-muted: #6E6152;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(ellipse at top, #24374B 0%, var(--ink-navy) 60%);
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--ink-text);
+    padding: 3rem 1.25rem 5rem;
+  }
+
+  .hero {
+    text-align: center;
+    max-width: 560px;
+    margin: 0 auto 2rem;
+    color: var(--parchment);
+  }
+
+  .hero .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: block;
+    margin-bottom: 0.75rem;
+  }
+
+  .hero h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(2.2rem, 6vw, 3rem);
+    margin: 0 0 0.6rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+    color: #C7CBD1;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .ticket {
+    max-width: 640px;
+    margin: 0 auto;
+    background: var(--parchment);
+    border-radius: 18px;
+    padding: 2.25rem clamp(1.25rem, 4vw, 2.5rem) 2.5rem;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.5);
+    position: relative;
+  }
+
+  /* perforazione stile biglietto */
+  .ticket::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-image: repeating-linear-gradient(90deg, var(--ink-navy) 0 8px, transparent 0 16px);
+    opacity: 0.15;
+  }
+
+  .field-group {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem 1.5rem;
+    border-top: 1px dashed var(--gold);
+    padding-top: 1.75rem;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .field.full { grid-column: 1 / -1; }
+
+  .field label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink-text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .field label::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--terracotta);
+    flex-shrink: 0;
+  }
+
+  input[type="text"], input[type="date"], input[type="number"],
+  select, textarea {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    padding: 0.65rem 0.75rem;
+    border: 1.5px solid var(--parchment-2);
+    background: #fff;
+    border-radius: 8px;
+    color: var(--ink-text);
+    width: 100%;
+    transition: border-color 0.15s ease;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--terracotta);
+  }
+
+  textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
+
+  .dates-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .dates-row input[type="date"] { flex: 1; min-width: 0; }
+
+  .flex-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    color: var(--ink-muted);
+    font-weight: 500;
+    margin-top: 0.35rem;
+  }
+  .flex-check input { width: auto; }
+
+  .people-row { display: flex; gap: 0.5rem; }
+  .people-row input[type="number"] { max-width: 80px; }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 0.9rem;
+    margin-top: 1.1rem;
+  }
+
+  .chip {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1.5px dashed var(--olive);
+    color: var(--olive);
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease;
+  }
+  .chip:nth-child(odd) { transform: rotate(-1.5deg); }
+  .chip:nth-child(even) { transform: rotate(1.5deg); }
+  .chip:hover { background: rgba(107,122,79,0.08); }
+  .chip.active {
+    background: var(--olive);
+    color: var(--parchment);
+    transform: rotate(0deg) scale(1.03);
+  }
+
+  .submit-row { margin-top: 2rem; text-align: center; }
+
+  button[type="submit"] {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 1rem;
+    background: var(--terracotta);
+    color: var(--parchment);
+    border: none;
+    padding: 0.85rem 2.2rem;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 10px 20px -8px rgba(193,104,61,0.55);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button[type="submit"]:hover { transform: translateY(-1px); box-shadow: 0 14px 26px -8px rgba(193,104,61,0.65); }
+  button[type="submit"]:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+  #status {
+    max-width: 640px;
+    margin: 1.5rem auto 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--gold);
+    white-space: pre-wrap;
+    text-align: center;
+  }
+
+  @media (max-width: 560px) {
+    .field-group { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
-  <h1>Nostos - test</h1>
-  <textarea id="query" placeholder="Scrivi qui il tuo viaggio ideale..."></textarea>
-  <br>
-  <button id="submit">Invia</button>
+
+  <div class="hero">
+    <span class="eyebrow">Nostos · viaggi autentici</span>
+    <h1>Racconta il viaggio che cerchi</h1>
+    <p>Niente cataloghi, niente pacchetti standard. Ci pensiamo noi a comporre l'itinerario, tu dicci solo cosa conta per te.</p>
+  </div>
+
+  <form class="ticket" id="trip-form">
+    <div class="field-group">
+      <div class="field">
+        <label for="destination">Dove vuoi andare?</label>
+        <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto per farti sorprendere">
+      </div>
+
+      <div class="field">
+        <label for="start_date">Quando?</label>
+        <div class="dates-row">
+          <input type="date" id="start_date">
+          <input type="date" id="end_date">
+        </div>
+        <label class="flex-check"><input type="checkbox" id="flexible_dates"> Date flessibili</label>
+      </div>
+
+      <div class="field">
+        <label for="travelers_count">Con chi parti?</label>
+        <div class="people-row">
+          <input type="number" id="travelers_count" min="1" value="1">
+          <select id="travelers_type">
+            <option value="solo" id="opt-solo">Da solo</option>
+            <option value="coppia">In coppia</option>
+            <option value="famiglia">In famiglia</option>
+            <option value="amici">Con amici</option>
+            <option value="gruppo">Gruppo</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="budget_range">Budget indicativo</label>
+        <select id="budget_range">
+          <option value="economico">Economico</option>
+          <option value="medio" selected>Medio</option>
+          <option value="alto">Alto</option>
+          <option value="no-limit">Nessun limite</option>
+        </select>
+      </div>
+
+      <div class="field full">
+        <label for="departure_location">Parti da</label>
+        <input type="text" id="departure_location" placeholder="Es. Milano">
+      </div>
+
+      <div class="field full">
+        <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
+        <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..."></textarea>
+        <div class="chips">
+          <button type="button" class="chip" data-text="trekking e natura">🥾 Trekking</button>
+          <button type="button" class="chip" data-text="cibo e tradizioni locali">🍝 Cibo locale</button>
+          <button type="button" class="chip" data-text="storia e cultura">🏛️ Storia</button>
+          <button type="button" class="chip" data-text="mare e relax">🌊 Mare</button>
+          <button type="button" class="chip" data-text="ritmo lento, lontano dalle folle">🐢 Ritmo lento</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <button type="submit" id="submit-btn">Trova il mio viaggio</button>
+    </div>
+  </form>
+
   <div id="status"></div>
 
 <script>
   const API_BASE = "http://localhost:3072";
+  const form = document.getElementById("trip-form");
+  const statusEl = document.getElementById("status");
+  const submitBtn = document.getElementById("submit-btn");
+  const freeText = document.getElementById("free_text");
 
-  document.getElementById("submit").addEventListener("click", async () => {
-    const query = document.getElementById("query").value.trim();
-    const statusEl = document.getElementById("status");
-    if (!query) return;
+  const countInput = document.getElementById("travelers_count");
+  const typeSelect = document.getElementById("travelers_type");
+  const optSolo = document.getElementById("opt-solo");
 
-    statusEl.textContent = "Invio in corso...";
+  countInput.addEventListener("input", () => {
+    const n = Number(countInput.value) || 1;
+    if (n > 1) {
+      optSolo.disabled = true;
+      if (typeSelect.value === "solo") typeSelect.value = "coppia";
+    } else {
+      optSolo.disabled = false;
+    }
+  });
+
+  typeSelect.addEventListener("change", () => {
+    if (typeSelect.value === "solo") countInput.value = 1;
+  });
+
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      chip.classList.toggle("active");
+      const fragment = chip.dataset.text;
+      const current = freeText.value.trim();
+      if (chip.classList.contains("active")) {
+        freeText.value = current ? `${current}, ${fragment}` : fragment;
+      } else {
+        freeText.value = current.replace(new RegExp(`,?\\s*${fragment}`), "").trim();
+      }
+    });
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    statusEl.textContent = "Sto preparando il tuo viaggio...";
+
+    const payload = {
+      destination: document.getElementById("destination").value || null,
+      start_date: document.getElementById("start_date").value || null,
+      end_date: document.getElementById("end_date").value || null,
+      flexible_dates: document.getElementById("flexible_dates").checked,
+      travelers_count: Number(document.getElementById("travelers_count").value) || 1,
+      travelers_type: document.getElementById("travelers_type").value,
+      budget_range: document.getElementById("budget_range").value,
+      departure_location: document.getElementById("departure_location").value || null,
+      free_text: freeText.value,
+    };
+
     try {
       const res = await fetch(`${API_BASE}/trips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error(`Errore server: ${res.status}`);
       const data = await res.json();
       statusEl.textContent = "Salvato:\n" + JSON.stringify(data, null, 2);
     } catch (err) {
       statusEl.textContent = "Errore: " + err.message;
+    } finally {
+      submitBtn.disabled = false;
     }
   });
 </script>
