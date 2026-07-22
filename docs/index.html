@@ -219,7 +219,7 @@
     <p>Niente cataloghi, niente pacchetti standard. Ci pensiamo noi a comporre l'itinerario, tu dicci solo cosa conta per te.</p>
   </div>
 
-  <form class="ticket" id="trip-form">
+  <form class="ticket" id="trip-form" autocomplete="off">
     <div class="field-group">
       <div class="field">
         <label for="destination">Dove vuoi andare?</label>
@@ -330,6 +330,11 @@
 
   // applica subito lo stato iniziale (1 persona → solo le opzioni valide per 1)
   syncTypeOptions(Number(countInput.value) || 1);
+
+  window.addEventListener("pageshow", () => {
+    form.reset();
+    document.querySelectorAll(".chip.active").forEach(chip => chip.classList.remove("active"));
+  });
   
   document.querySelectorAll(".chip").forEach(chip => {
     chip.addEventListener("click", () => {
