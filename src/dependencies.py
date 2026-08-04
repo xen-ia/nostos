@@ -1,10 +1,20 @@
 from fastapi import Depends, Request
 from redis.asyncio import Redis
+import asyncpg
 
 from src.apis.llm import AnthropicClient, LLMClient
 from src.settings import Settings, get_settings
 from src.trip_store import TripStore
 from src.apis.email import EmailSender
+from src.database import Database
+
+
+def get_postgres(request: Request) -> asyncpg.Pool:
+    return request.app.state.pg_pool
+
+
+def get_database(pool: asyncpg.Pool = Depends(get_postgres)) -> Database:
+    return Database(pool=pool)
 
 
 def get_email_sender(settings: Settings = Depends(get_settings)) -> EmailSender:
