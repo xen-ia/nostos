@@ -5,8 +5,10 @@ description = "νόστος-ξενία"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anthropic>=0.120.2",
     "fastapi>=0.139.2",
     "pydantic-settings>=2.14.2",
     "redis>=8.0.1",
+    "resend>=2.35.0",
     "uvicorn>=0.51.0",
 ]

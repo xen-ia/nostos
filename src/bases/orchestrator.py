@@ -1,10 +1,7 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 
 
 class BaseOrchestrator(ABC):
-    def __init__(self):
-        super().__init__()
-
     @abstractmethod
-    def run():
+    async def run(self) -> None:
         ...
