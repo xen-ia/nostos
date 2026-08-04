@@ -1,9 +1,8 @@
-# ξενία-νόστος
+# νόστος-ξενία
 
 ```md
 nostos/
-├── main.py                   # FastAPI app + lifespan (apre/chiude redis, postgres, qdrant) + include_router
-├── docker-compose.yml        # redis + postgres + qdrant, un comando per tutta l'infra locale
+├── main.py                   # FastAPI app + lifespan (apre/chiude solo redis) + include_router
 ├── pyproject.toml
 ├── uv.lock
 ├── .env.example
@@ -12,35 +11,32 @@ nostos/
 ├── README.md
 │
 ├── docs/
-│   └── index.html
-│
-├── tests/
-│   └── test_trip_store.py    # solo il lock atomico, il punto più delicato oggi
+│   └── index.html            # frontend mock (form viaggio + POST /trips)
 │
 └── src/
-    ├── settings.py           # config, un file, tutta la verità
-    ├── dependencies.py       # Depends(): redis, postgres session, qdrant, trip_store, orchestrator
+    ├── settings.py           # config via pydantic-settings, prefisso NOSTOS_
+    ├── dependencies.py       # Depends(): redis, trip_store, llm_client, email_sender
     │
     ├── trip_store.py         # TripStatus, TripCreateRequest/Response, TripStore (Redis)
-    ├── database.py           # engine + modelli SQLAlchemy (TripHistory, Feedback, Destination) + query dirette
-    ├── knowledge.py          # qdrant client + embedding (fastembed) + retrieval — un file, si spacca quando cresce
+    ├── database.py           # placeholder per engine/modelli SQLAlchemy (non ancora implementato)
+    ├── knowledge.py          # placeholder per qdrant/embedding (non ancora implementato)
     │
-    ├── pipeline.py           # TripOrchestrator
+    ├── pipeline.py           # TripOrchestrator: estrae intent LLM → compone pacchetto → invia email
     ├── bases/
-    │   └── orchestrator.py
+    │   └── orchestrator.py   # BaseOrchestrator (ABC)
     │
-    ├── apis/                 # APIs 
-    │   ├── flights.py
-    │   ├── maps.py
-    │   ├── places.py
-    │   ├── llm.py            
-    │   └── email.py
+    ├── apis/                 # integrazioni esterne
+    │   ├── flights.py        # stub di ricerca voli
+    │   ├── maps.py           # stub di ricerca punti di interesse
+    │   ├── places.py         # stub di ricerca alloggi/esperienze
+    │   ├── llm.py            # AnthropicClient (extract_json / generate_text)
+    │   └── email.py          # EmailSender via Resend
     │
     ├── routers/
-    │   ├── trips.py
-    │   └── feedback.py
+    │   └── trips.py          # POST /trips (crea + run orchestrator), GET /trips/{id}
     │
     ├── prompts/
+    │   └── system_prompt.md
     └── tools/
 ```
 
