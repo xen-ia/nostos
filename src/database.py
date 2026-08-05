@@ -1,4 +1,6 @@
 import asyncpg
+from datetime import date
+from uuid import UUID
 
 
 class Database:
@@ -30,13 +32,17 @@ class Database:
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             """,
-            trip_id, email, destination, start_date, end_date, flexible_dates,
-            travelers_count, travelers_type, budget_range, departure_location,
-            free_text, email_subject, email_body,
-        )
-
-    async def save_feedback(self, trip_id: str, email: str, rating: int, note: str | None) -> None:
-        await self._pool.execute(
-            "INSERT INTO feedback (trip_id, email, rating, note) VALUES ($1, $2, $3, $4)",
-            trip_id, email, rating, note,
+            UUID(trip_id),
+            email,
+            destination,
+            date.fromisoformat(start_date) if start_date else None,
+            date.fromisoformat(end_date) if end_date else None,
+            flexible_dates,
+            travelers_count,
+            travelers_type,
+            budget_range,
+            departure_location,
+            free_text,
+            email_subject,
+            email_body,
         )
