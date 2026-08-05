@@ -11,5 +11,6 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "redis>=8.0.1",
     "resend>=2.35.0",
+    "serpapi>=1.0.2",
     "uvicorn>=0.51.0",
 ]
