@@ -1,18 +1,8 @@
 """APIs for handling room/camping search"""
-import asyncio
 from datetime import date, timedelta
 from typing import Optional
 
-from serpapi import Client
-
-from src.settings import get_settings
-
-
-async def _search(params: dict) -> dict:
-    settings = get_settings()
-    client = Client(api_key=settings.serpapi_key)
-    results = await asyncio.to_thread(client.search, params)
-    return results.as_dict()
+from src.apis.serpapi import SerpAPIError, search as serpapi_search
 
 
 def _default_dates() -> tuple[str, str]:
@@ -42,18 +32,19 @@ async def search(destination: Optional[str], interests: list[str], style: list[s
         query = f"hotels in {destination}: {interests[0]}"
 
     check_in, check_out = _default_dates()
-    data = await _search(
-        {
-            "engine": "google_hotels",
-            "q": query,
-            "check_in_date": check_in,
-            "check_out_date": check_out,
-            "hl": "it",
-            "gl": "it",
-            "currency": "EUR",
-        }
-    )
-    if "error" in data:
+    try:
+        data = await serpapi_search(
+            {
+                "engine": "google_hotels",
+                "q": query,
+                "check_in_date": check_in,
+                "check_out_date": check_out,
+                "hl": "it",
+                "gl": "it",
+                "currency": "EUR",
+            }
+        )
+    except SerpAPIError:
         return []
 
     properties = data.get("properties", [])

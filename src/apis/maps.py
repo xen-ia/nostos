@@ -1,17 +1,7 @@
 """APIs for handling maps research"""
-import asyncio
 from typing import Optional
 
-from serpapi import Client
-
-from src.settings import get_settings
-
-
-async def _search(params: dict) -> dict:
-    settings = get_settings()
-    client = Client(api_key=settings.serpapi_key)
-    results = await asyncio.to_thread(client.search, params)
-    return results.as_dict()
+from src.apis.serpapi import SerpAPIError, search as serpapi_search
 
 
 def _normalize(place: dict) -> dict:
@@ -34,15 +24,16 @@ async def research(destination: Optional[str], interests: list[str]) -> list[dic
     if interests:
         query = f"{interests[0]} in {destination}"
 
-    data = await _search(
-        {
-            "engine": "google_maps",
-            "q": query,
-            "type": "search",
-            "hl": "it",
-        }
-    )
-    if "error" in data:
+    try:
+        data = await serpapi_search(
+            {
+                "engine": "google_maps",
+                "q": query,
+                "type": "search",
+                "hl": "it",
+            }
+        )
+    except SerpAPIError:
         return []
 
     places = data.get("local_results", [])

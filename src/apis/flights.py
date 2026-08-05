@@ -1,11 +1,8 @@
 """APIs for handling flights lookup"""
-import asyncio
 import re
 from typing import Optional
 
-from serpapi import Client
-
-from src.settings import get_settings
+from src.apis.serpapi import SerpAPIError, search as serpapi_search
 
 IATA_PATTERN = re.compile(r"\b([A-Z]{3})\b")
 
@@ -14,13 +11,6 @@ def _airport_code(value: str) -> str:
     """Estrae un codice IATA se presente nel testo, altrimenti usa il testo così com'è."""
     match = IATA_PATTERN.search(value)
     return match.group(1) if match else value
-
-
-async def _search(params: dict) -> dict:
-    settings = get_settings()
-    client = Client(api_key=settings.serpapi_key)
-    results = await asyncio.to_thread(client.search, params)
-    return results.as_dict()
 
 
 def _normalize(flight: dict) -> dict:
@@ -59,8 +49,9 @@ async def search(
     if end_date:
         params["return_date"] = end_date
 
-    data = await _search(params)
-    if "error" in data:
+    try:
+        data = await serpapi_search(params)
+    except SerpAPIError:
         return []
 
     flights = data.get("best_flights", []) + data.get("other_flights", [])
