@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 import asyncpg
 import redis.asyncio as redis_async
@@ -7,6 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.settings import get_settings
 from src.routers import trips
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 settings = get_settings()
 

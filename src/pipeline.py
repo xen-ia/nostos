@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional
 
 from pydantic import BaseModel
@@ -9,6 +10,8 @@ from src.trip_store import TripResponse, TripStatus, TripStore
 from src.apis import flights, maps, places
 from src.apis.email import EmailSender
 from src.database import Database
+
+logger = logging.getLogger("nostos.pipeline")
 
 
 class TripIntent(BaseModel):
@@ -95,13 +98,17 @@ class TripOrchestrator(BaseOrchestrator):
             await self._store.update_status(self._trip_id, TripStatus.RUNNING)
 
             intent = await self._extract_intent(trip)
+            logger.info("intent estratto: %s", intent.model_dump())
+
             email_content = await self._compose_package(trip, intent)
 
             await self._store.update_status(self._trip_id, TripStatus.DONE, result=email_content["body"])
             await self._send_email(trip, email_content)
             await self._save_history(trip, email_content)
+            logger.info("trip %s completato: email inviata e storico salvato", self._trip_id)
 
         except Exception as exc:
+            logger.exception("trip %s fallito", self._trip_id)
             await self._store.update_status(self._trip_id, TripStatus.ERROR, result=str(exc))
 
     async def _save_history(self, trip: TripResponse, email_content: dict) -> None:
@@ -143,6 +150,15 @@ class TripOrchestrator(BaseOrchestrator):
             return_exceptions=True,
         )
         flights_res, maps_res, places_res = (self._first(r) for r in results)
+
+        for label, result in (("voli", results[0]), ("poi", results[1]), ("alloggi", results[2])):
+            if isinstance(result, Exception):
+                logger.warning("%s: errore %s", label, type(result).__name__)
+            else:
+                logger.info("%s: %d risultati", label, len(result))
+        logger.info("volo di esempio: %s", flights_res)
+        logger.info("punto di interesse: %s", maps_res)
+        logger.info("alloggio: %s", places_res)
 
         prompt = f"""Sei un travel curator di Nostos, agenzia che valorizza viaggi autentici e
         sostenibili, lontani dal turismo di massa. Componi un insight da inviare via email a un
