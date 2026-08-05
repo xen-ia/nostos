@@ -8,6 +8,7 @@ from src.bases.orchestrator import BaseOrchestrator
 from src.trip_store import TripResponse, TripStatus, TripStore
 from src.apis import flights, maps, places
 from src.apis.email import EmailSender
+from src.database import Database
 
 
 class TripIntent(BaseModel):
@@ -66,17 +67,23 @@ EMAIL_CONTENT_SCHEMA = {
     "required": ["subject", "body"],
 }
 
+
 class TripOrchestrator(BaseOrchestrator):
     LOCK_TTL_SECONDS = 300
 
-    def __init__(self, store: TripStore, llm_client: LLMClient, email_sender: EmailSender, trip_id: str):
+    def __init__(
+        self,
+        store: TripStore,
+        llm_client: LLMClient,
+        email_sender: EmailSender,
+        database: Database,
+        trip_id: str,
+    ):
         self._store = store
         self._llm = llm_client
         self._email = email_sender
+        self._db = database
         self._trip_id = trip_id
-
-    async def _send_email(self, trip: TripResponse, email_content: dict) -> None:
-        await self._email.send(to=trip.email, subject=email_content["subject"], body=email_content["body"])
 
     async def run(self) -> None:
         claimed = await self._store.claim(self._trip_id, ttl_seconds=self.LOCK_TTL_SECONDS)
@@ -88,14 +95,35 @@ class TripOrchestrator(BaseOrchestrator):
             await self._store.update_status(self._trip_id, TripStatus.RUNNING)
 
             intent = await self._extract_intent(trip)
-            print(f"[DEBUG] TripIntent estratto: {intent.model_dump()}")
             email_content = await self._compose_package(trip, intent)
 
             await self._store.update_status(self._trip_id, TripStatus.DONE, result=email_content["body"])
             await self._send_email(trip, email_content)
+            await self._save_history(trip, email_content)
 
         except Exception as exc:
             await self._store.update_status(self._trip_id, TripStatus.ERROR, result=str(exc))
+
+    async def _save_history(self, trip: TripResponse, email_content: dict) -> None:
+        await self._db.save_trip_history(
+            trip_id=trip.id,
+            email=trip.email,
+            destination=trip.destination,
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            flexible_dates=trip.flexible_dates,
+            travelers_count=trip.travelers_count,
+            travelers_type=trip.travelers_type,
+            budget_range=trip.budget_range,
+            departure_location=trip.departure_location,
+            free_text=trip.free_text,
+            email_subject=email_content["subject"],
+            email_body=email_content["body"],
+        )
+
+    async def _send_email(self, trip: TripResponse, email_content: dict) -> None:
+        await self._email.send(to=trip.email, subject=email_content["subject"], body=email_content["body"])
+
 
     async def _extract_intent(self, trip: TripResponse) -> TripIntent:
         prompt = f"""Estrai le informazioni di viaggio da questa richiesta.

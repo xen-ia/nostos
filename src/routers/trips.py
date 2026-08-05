@@ -2,7 +2,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from src.apis.email import EmailSender
 from src.apis.llm import LLMClient
-from src.dependencies import get_email_sender, get_llm_client, get_trip_store
+from src.database import Database
+from src.dependencies import get_database, get_email_sender, get_llm_client, get_trip_store
 from src.pipeline import TripOrchestrator
 from src.trip_store import TripCreateRequest, TripNotFoundError, TripResponse, TripStore
 
@@ -16,6 +17,7 @@ async def create_trip(
     store: TripStore = Depends(get_trip_store),
     llm_client: LLMClient = Depends(get_llm_client),
     email_sender: EmailSender = Depends(get_email_sender),
+    database: Database = Depends(get_database),
 ):
     trip = await store.create(payload)
 
@@ -23,6 +25,7 @@ async def create_trip(
         store=store,
         llm_client=llm_client,
         email_sender=email_sender,
+        database=database,
         trip_id=trip.id,
     )
     background_tasks.add_task(orchestrator.run)
