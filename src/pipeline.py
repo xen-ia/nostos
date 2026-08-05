@@ -135,11 +135,14 @@ class TripOrchestrator(BaseOrchestrator):
         return TripIntent.model_validate(raw)
 
     async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> dict:
-        flights_res, maps_res, places_res = await asyncio.gather(
-            flights.search(trip.departure_location, intent.destination or trip.destination, trip.start_date, trip.end_date),
-            maps.research(intent.destination or trip.destination, intent.interests),
-            places.search(intent.destination or trip.destination, intent.interests, intent.style),
+        destination = intent.destination or trip.destination
+        results = await asyncio.gather(
+            flights.search(trip.departure_location, destination, trip.start_date, trip.end_date),
+            maps.research(destination, intent.interests),
+            places.search(destination, intent.interests, intent.style),
+            return_exceptions=True,
         )
+        flights_res, maps_res, places_res = (self._first(r) for r in results)
 
         prompt = f"""Sei un travel curator di Nostos, agenzia che valorizza viaggi autentici e
         sostenibili, lontani dal turismo di massa. Componi un insight da inviare via email a un
@@ -148,8 +151,17 @@ class TripOrchestrator(BaseOrchestrator):
 
         Interessi: {', '.join(intent.interests) or 'non specificati'}
         Stile ricercato: {', '.join(intent.style) or 'non specificato'}
-        Volo di esempio: {flights_res[0]}
-        Punto di interesse: {maps_res[0]}
-        Esperienza/alloggio: {places_res[0]}
+        Volo di esempio: {flights_res}
+        Punto di interesse: {maps_res}
+        Esperienza/alloggio: {places_res}
         """
         return await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
+
+    @staticmethod
+    def _first(result) -> object:
+        """Ritorna il primo risultato reale, o un fallback se vuoto/errore."""
+        if isinstance(result, Exception):
+            return f"non disponibile ({type(result).__name__})"
+        if not result:
+            return "nessun risultato trovato"
+        return result[0]
