@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from pydantic import BaseModel
@@ -123,6 +125,14 @@ EMAIL_CONTENT_SCHEMA = {
 class TripOrchestrator(BaseOrchestrator):
     LOCK_TTL_SECONDS = 300
 
+    @asynccontextmanager
+    async def _timed(self, label: str):
+        start = time.monotonic()
+        try:
+            yield
+        finally:
+            logger.info("%s: %.1fs", label, time.monotonic() - start)
+
     def __init__(
         self,
         store: TripStore,
@@ -149,11 +159,13 @@ class TripOrchestrator(BaseOrchestrator):
             intent = await self._extract_intent(trip)
             logger.info("intent estratto: %s", intent.model_dump())
 
-            email_content, body_text, body_html, package = await self._compose_package(trip, intent)
+            async with self._timed("compose_package"):
+                email_content, body_text, body_html, package = await self._compose_package(trip, intent)
 
-            await self._store.update_status(self._trip_id, TripStatus.DONE, result=body_text)
-            await self._send_email(trip, email_content, body_text, body_html)
-            await self._save_history(trip, email_content, body_text, package)
+            async with self._timed("send_email"):
+                await self._send_email(trip, email_content, body_text, body_html)
+            async with self._timed("save_history"):
+                await self._save_history(trip, email_content, body_text, package)
             logger.info("trip %s completato: email inviata e storico salvato", self._trip_id)
 
         except Exception as exc:
@@ -212,19 +224,21 @@ class TripOrchestrator(BaseOrchestrator):
 
         Se possibile, riporta anche i codici IATA di partenza e destinazione.
         """
-        raw = await self._llm.extract_json(prompt, TRIP_INTENT_SCHEMA)
+        async with self._timed("extract_intent (LLM)"):
+            raw = await self._llm.extract_json(prompt, TRIP_INTENT_SCHEMA)
         return TripIntent.model_validate(raw)
 
     async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> tuple[dict, dict]:
         destination = intent.destination or trip.destination
         departure_code = intent.departure_airport_code or trip.departure_location
         destination_code = intent.destination_airport_code or destination
-        results = await asyncio.gather(
-            flights.search(departure_code, destination_code, trip.start_date, trip.end_date),
-            maps.research(destination, intent.interests),
-            places.search(destination, intent.interests, intent.style),
-            return_exceptions=True,
-        )
+        async with self._timed("serpapi (flights+maps+places)"):
+            results = await asyncio.gather(
+                flights.search(departure_code, destination_code, trip.start_date, trip.end_date),
+                maps.research(destination, intent.interests),
+                places.search(destination, intent.interests, intent.style),
+                return_exceptions=True,
+            )
         flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)
 
         for label, result in (("voli", results[0]), ("poi", results[1]), ("alloggi", results[2])):
@@ -272,7 +286,8 @@ class TripOrchestrator(BaseOrchestrator):
         Alloggi:
         {self._render_places(places_list)}
         """
-        email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
+        async with self._timed("compose_email (LLM)"):
+            email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
 
         body_text = self._compose_body_text(email_content)
         body_html = build_html_email(email_content)

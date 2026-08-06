@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
     datefmt="%H:%M:%S",
-    handlers=[RichHandler(rich_tracebacks=True, show_time=False, markup=True)],
+    handlers=[RichHandler(rich_tracebacks=True, show_time=True, show_path=False, markup=True)],
 )
 
 settings = get_settings()
