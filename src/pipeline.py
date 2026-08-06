@@ -202,7 +202,7 @@ class TripOrchestrator(BaseOrchestrator):
         lines.append("")
         lines.append("Buon ritorno a casa,")
         lines.append("Edoardo & Chiara")
-        lines.append("Nostos")
+        lines.append("CEOs@Nostos")
         return "\n".join(lines)
 
 

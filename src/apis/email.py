@@ -70,7 +70,7 @@ def build_html_email(content: dict) -> str:
           <td style="padding:24px 32px 28px;">
             <div style="font-size:15px;color:#33302a;">Buon ritorno a casa,</div>
             <div style="font-size:16px;font-weight:bold;color:#1f2a24;margin-top:8px;">Edoardo &amp; Chiara</div>
-            <div style="font-size:13px;letter-spacing:3px;color:#8a8372;margin-top:2px;">NOSTOS</div>
+            <div style="font-size:13px;letter-spacing:2px;color:#8a8372;margin-top:2px;">CEOs@Nostos</div>
           </td>
         </tr>
         <tr>
