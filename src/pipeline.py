@@ -79,8 +79,15 @@ EMAIL_CONTENT_SCHEMA = {
         "subject": {"type": "string", "description": "Oggetto dell'email, breve e personale"},
         "body": {
             "type": "string",
-            "description": "Corpo dell'email in italiano, max 150 parole, tono caldo. "
-                           "Chiudi invitando a rispondere per fissare una call, non con un link.",
+            "description": (
+                "Corpo dell'email in italiano, tono onesto e diretto. Deve: "
+                "1) dichiarare chiaramente che è scritta da un assistente AI; "
+                "2) offrire 2-3 spunti concreti e consultabili, basati sui dati reali forniti, "
+                "con i relativi link dove utile; "
+                "3) non promettere nulla di non verificato, aperta alla discussione. "
+                "Formato: titolino introduttivo, gli spunti con link/przzi, chiusura che invita a "
+                "rispondere. Massimo ~150 parole."
+            ),
         },
     },
     "required": ["subject", "body"],
@@ -116,18 +123,18 @@ class TripOrchestrator(BaseOrchestrator):
             intent = await self._extract_intent(trip)
             logger.info("intent estratto: %s", intent.model_dump())
 
-            email_content = await self._compose_package(trip, intent)
+            email_content, package = await self._compose_package(trip, intent)
 
             await self._store.update_status(self._trip_id, TripStatus.DONE, result=email_content["body"])
             await self._send_email(trip, email_content)
-            await self._save_history(trip, email_content)
+            await self._save_history(trip, email_content, package)
             logger.info("trip %s completato: email inviata e storico salvato", self._trip_id)
 
         except Exception as exc:
             logger.exception("trip %s fallito", self._trip_id)
             await self._store.update_status(self._trip_id, TripStatus.ERROR, result=str(exc))
 
-    async def _save_history(self, trip: TripResponse, email_content: dict) -> None:
+    async def _save_history(self, trip: TripResponse, email_content: dict, package: dict) -> None:
         await self._db.save_trip_history(
             trip_id=trip.id,
             email=trip.email,
@@ -142,6 +149,7 @@ class TripOrchestrator(BaseOrchestrator):
             free_text=trip.free_text,
             email_subject=email_content["subject"],
             email_body=email_content["body"],
+            package=package,
         )
 
     async def _send_email(self, trip: TripResponse, email_content: dict) -> None:
@@ -160,7 +168,7 @@ class TripOrchestrator(BaseOrchestrator):
         raw = await self._llm.extract_json(prompt, TRIP_INTENT_SCHEMA)
         return TripIntent.model_validate(raw)
 
-    async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> dict:
+    async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> tuple[dict, dict]:
         destination = intent.destination or trip.destination
         departure_code = intent.departure_airport_code or trip.departure_location
         destination_code = intent.destination_airport_code or destination
@@ -170,35 +178,40 @@ class TripOrchestrator(BaseOrchestrator):
             places.search(destination, intent.interests, intent.style),
             return_exceptions=True,
         )
-        flights_res, maps_res, places_res = (self._first(r) for r in results)
+        flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)
 
         for label, result in (("voli", results[0]), ("poi", results[1]), ("alloggi", results[2])):
             if isinstance(result, Exception):
                 logger.warning("%s: errore %s", label, type(result).__name__)
             else:
                 logger.info("%s: %d risultati", label, len(result))
-        logger.info("volo di esempio: %s", flights_res)
-        logger.info("punto di interesse: %s", maps_res)
-        logger.info("alloggio: %s", places_res)
+
+        package = {
+            "intent": intent.model_dump(),
+            "flights": flights_list[:3],
+            "maps": maps_list[:3],
+            "places": places_list[:3],
+        }
 
         prompt = f"""Sei un travel curator di Nostos, agenzia che valorizza viaggi autentici e
-        sostenibili, lontani dal turismo di massa. Componi un insight da inviare via email a un
-        potenziale viaggiatore. Non presentarlo come un pacchetto finito — è uno spunto per aprire
-        una conversazione.
+        sostenibili, lontani dal turismo di massa. Scrivii un'email a un potenziale viaggiatore.
 
+        Regole per l'email:
+        - dichiara in modo chiaro che è scritta da un assistente AI (nessun finto calore umano);
+        - sii onesta: riporta solo dati reali e verificabili, usa i link forniti;
+        - proponi 2-3 spunti concreti e consultabili (es. citando volo con prezzo e link, un
+          punto di interesse, un alloggio con prezzo e link);
+        - non vendere un pacchetto finito: apri la conversazione;
+        - formato ordinato, massimo ~150 parole.
+
+        Contesto viaggio:
         Interessi: {', '.join(intent.interests) or 'non specificati'}
         Stile ricercato: {', '.join(intent.style) or 'non specificato'}
-        Volo di esempio: {flights_res}
-        Punto di interesse: {maps_res}
-        Esperienza/alloggio: {places_res}
-        """
-        return await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
 
-    @staticmethod
-    def _first(result) -> object:
-        """Ritorna il primo risultato reale, o un fallback se vuoto/errore."""
-        if isinstance(result, Exception):
-            return f"non disponibile ({type(result).__name__})"
-        if not result:
-            return "nessun risultato trovato"
-        return result[0]
+        Dati reali raccolti (usa questi, non inventarne di nuovi):
+        Voli (top): {flights_list if flights_list else 'nessun volo trovato'}
+        Punti di interesse (top): {maps_list if maps_list else 'nessun punto di interesse trovato'}
+        Alloggi (top): {places_list if places_list else 'nessun alloggio trovato'}
+        """
+        email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
+        return email_content, package

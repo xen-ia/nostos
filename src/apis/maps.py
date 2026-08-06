@@ -12,6 +12,7 @@ def _normalize(place: dict) -> dict:
         "reviews_count": place.get("reviews"),
         "address": place.get("address"),
         "description": place.get("description"),
+        "link": place.get("website"),
     }
 
 

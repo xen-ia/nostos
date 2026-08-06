@@ -19,6 +19,7 @@ def _normalize(property_: dict) -> dict:
         "price_per_night_eur": rate_per_night.get("extracted_lowest"),
         "total_price_eur": total_rate.get("extracted_lowest"),
         "essential_info": property_.get("essential_info"),
+        "link": property_.get("link"),
     }
 
 

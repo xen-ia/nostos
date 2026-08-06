@@ -13,7 +13,7 @@ def _airport_code(value: str) -> str:
     return match.group(1) if match else value
 
 
-def _normalize(flight: dict) -> dict:
+def _normalize(flight: dict, link: str | None = None) -> dict:
     legs = flight.get("flights", [])
     outbound = legs[0] if legs else {}
     return {
@@ -24,6 +24,7 @@ def _normalize(flight: dict) -> dict:
         "return_date": None,
         "price_eur": flight.get("price"),
         "total_duration_minutes": flight.get("total_duration"),
+        "link": link,
     }
 
 
@@ -54,5 +55,6 @@ async def search(
     except SerpAPIError:
         return []
 
+    link = data.get("search_metadata", {}).get("google_flights_url")
     flights = data.get("best_flights", []) + data.get("other_flights", [])
-    return [_normalize(f) for f in flights[:5]]
+    return [_normalize(f, link) for f in flights[:5]]
