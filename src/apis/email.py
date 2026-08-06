@@ -1,5 +1,9 @@
 import asyncio
+import logging
+
 import resend
+
+logger = logging.getLogger("nostos.email")
 
 
 class EmailSendError(Exception):
@@ -16,6 +20,6 @@ class EmailSender:
             resend.Emails.send,
             {"from": self._from, "to": to, "subject": subject, "text": body},
         )
-        print(f"[DEBUG] Risposta Resend: {response}")
         if not response or "id" not in response:
             raise EmailSendError(f"Invio fallito, risposta inattesa: {response}")
+        logger.info("email inviata a %s (id=%s)", to, response["id"])
