@@ -80,13 +80,16 @@ EMAIL_CONTENT_SCHEMA = {
         "body": {
             "type": "string",
             "description": (
-                "Corpo dell'email in italiano, tono onesto e diretto. Deve: "
-                "1) dichiarare chiaramente che è scritta da un assistente AI; "
-                "2) offrire 2-3 spunti concreti e consultabili, basati sui dati reali forniti, "
-                "con i relativi link dove utile; "
-                "3) non promettere nulla di non verificato, aperta alla discussione. "
-                "Formato: titolino introduttivo, gli spunti con link/przzi, chiusura che invita a "
-                "rispondere. Massimo ~150 parole."
+                "Corpo dell'email in italiano, TESTO PIANO: niente markdown, niente asterischi, "
+                "niente trattini per elenchi, niente hashtag — solo testo e andate a capo. "
+                "La firma deve essere 'Xen-IA, assistente AI'. Deve: "
+                "1) presentarsi come Xen-IA, assistente AI, in modo onesto ma accattivante, mai banale; "
+                "2) in apertura far capire di aver compreso l'intento e i desideri del viaggiatore "
+                "(interessi, stile, ritmo), con un tono più discorsivo e un po' prolisso; "
+                "3) offrire 2-3 spunti concreti e consultabili, basati sui dati reali forniti, con i "
+                "relativi link dove utile; "
+                "4) chiudere invitando a rispondere. Massimo ~180 parole, tenendo le parti narrative "
+                "più ampie degli elenchi."
             ),
         },
     },
@@ -193,20 +196,27 @@ class TripOrchestrator(BaseOrchestrator):
             "places": places_list[:3],
         }
 
-        prompt = f"""Sei un travel curator di Nostos, agenzia che valorizza viaggi autentici e
-        sostenibili, lontani dal turismo di massa. Scrivii un'email a un potenziale viaggiatore.
+        prompt = f"""Sei un travel curator che lavora per Xen-IA, un'assistente AI che aiuta a
+        comporre viaggi autentici. Scrivi un'email a un potenziale viaggiatore.
 
         Regole per l'email:
-        - dichiara in modo chiaro che è scritta da un assistente AI (nessun finto calore umano);
-        - sii onesta: riporta solo dati reali e verificabili, usa i link forniti;
-        - proponi 2-3 spunti concreti e consultabili (es. citando volo con prezzo e link, un
-          punto di interesse, un alloggio con prezzo e link);
-        - non vendere un pacchetto finito: apri la conversazione;
-        - formato ordinato, massimo ~150 parole.
+        - TESTO PIANO: niente markdown, niente asterischi, trattini o hashtag. Solo testo e
+          andate a capo (Gmail non renderizza il markdown);
+        - firma con 'Xen-IA, assistente AI'. Non usare il nome Nostos per presentarti: presentati
+          proprio come Xen-IA, e fai capire fin dall'inizio che è un'AI a scrivere — con schiettezza
+          ma in modo accattivante, non banale;
+        - in apertura: mostra di aver capito davvero cosa cerca il viaggiatore (i suoi interessi,
+          lo stile, il ritmo), con un tono discorsivo e leggermente prolisso, per creare vicinanza;
+        - proponi 2-3 spunti concreti e consultabili, citando solo dati reali forniti e i relativi
+          link (es. volo con prezzo e link, un punto di interesse, un alloggio con prezzo e link);
+        - non inventare dati; se una sezione è vuota non forzarla;
+        - chiudi invitando a rispondere. Parti narrative più ampie delle parti elenco, il tutto
+          intorno alle ~180 parole.
 
         Contesto viaggio:
         Interessi: {', '.join(intent.interests) or 'non specificati'}
         Stile ricercato: {', '.join(intent.style) or 'non specificato'}
+        Ritmo: {intent.pace or 'non specificato'}
 
         Dati reali raccolti (usa questi, non inventarne di nuovi):
         Voli (top): {flights_list if flights_list else 'nessun volo trovato'}
