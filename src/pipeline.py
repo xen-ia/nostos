@@ -15,6 +15,8 @@ from src.database import Database
 
 logger = logging.getLogger("nostos.pipeline")
 
+HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
+
 
 class TripIntent(BaseModel):
     destination: Optional[str] = None
@@ -110,15 +112,8 @@ EMAIL_CONTENT_SCHEMA = {
                 "reali. Niente di inventato. Se i dati sono insufficienti, inserisci meno voci."
             ),
         },
-        "honest_note": {
-            "type": "string",
-            "description": (
-                "Una sola riga: l'email è stata preparata con Xen-IA, assistente AI, e si invitano "
-                "a verificare prezzi/date."
-            ),
-        },
     },
-    "required": ["subject", "opening", "understanding", "resources", "honest_note"],
+    "required": ["subject", "opening", "understanding", "resources"],
 }
 
 
@@ -263,8 +258,6 @@ class TripOrchestrator(BaseOrchestrator):
            ritmo) — vicinanza, senza prolissità.
         3) resources: TRE voci (dalle risorse sotto), prese PAROLA PER PAROLA (nome, prezzo, link).
            Niente di inventato.
-        4) honest_note: UNA sola riga che dice che l'email è stata preparata con Xen-IA, assistente
-           AI, e invita a verificare prezzi/date.
 
         REGOLE:
         - Italiano, TESTO PIANO: niente markdown, asterischi, trattini o hashtag.
@@ -288,6 +281,7 @@ class TripOrchestrator(BaseOrchestrator):
         """
         async with self._timed("compose_email (LLM)"):
             email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
+        email_content["honest_note"] = HONEST_NOTE
 
         body_text = self._compose_body_text(email_content)
         body_html = build_html_email(email_content)
