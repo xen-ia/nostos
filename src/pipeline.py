@@ -16,6 +16,8 @@ logger = logging.getLogger("nostos.pipeline")
 
 class TripIntent(BaseModel):
     destination: Optional[str] = None
+    departure_airport_code: Optional[str] = None
+    destination_airport_code: Optional[str] = None
     interests: list[str] = []
     style: list[str] = []
     pace: Optional[str] = None
@@ -28,6 +30,20 @@ TRIP_INTENT_SCHEMA = {
         "destination": {
             "type": ["string", "null"],
             "description": "Destinazione se esplicita o chiaramente deducibile, altrimenti null",
+        },
+        "departure_airport_code": {
+            "type": ["string", "null"],
+            "description": (
+                "Codice IATA dell'aeroporto di partenza (es. MXP, BCN) se deducibile "
+                "dalla richiesta, altrimenti null"
+            ),
+        },
+        "destination_airport_code": {
+            "type": ["string", "null"],
+            "description": (
+                "Codice IATA dell'aeroporto della destinazione (es. FCO, DPS, CTA) se "
+                "deducibile, altrimenti null"
+            ),
         },
         "interests": {
             "type": "array",
@@ -136,15 +152,20 @@ class TripOrchestrator(BaseOrchestrator):
         prompt = f"""Estrai le informazioni di viaggio da questa richiesta.
 
         Destinazione indicata nel form: {trip.destination or "non specificata"}
+        Luogo di partenza indicato nel form: {trip.departure_location or "non specificato"}
         Testo libero dell'utente: "{trip.free_text}"
+
+        Se possibile, riporta anche i codici IATA di partenza e destinazione.
         """
         raw = await self._llm.extract_json(prompt, TRIP_INTENT_SCHEMA)
         return TripIntent.model_validate(raw)
 
     async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> dict:
         destination = intent.destination or trip.destination
+        departure_code = intent.departure_airport_code or trip.departure_location
+        destination_code = intent.destination_airport_code or destination
         results = await asyncio.gather(
-            flights.search(trip.departure_location, destination, trip.start_date, trip.end_date),
+            flights.search(departure_code, destination_code, trip.start_date, trip.end_date),
             maps.research(destination, intent.interests),
             places.search(destination, intent.interests, intent.style),
             return_exceptions=True,
