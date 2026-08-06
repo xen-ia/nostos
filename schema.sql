@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS trip_history (
     free_text TEXT NOT NULL DEFAULT '',
     email_subject TEXT,
     email_body TEXT,
+    package_json JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
