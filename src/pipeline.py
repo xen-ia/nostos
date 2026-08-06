@@ -235,7 +235,7 @@ class TripOrchestrator(BaseOrchestrator):
             results = await asyncio.gather(
                 flights.search(departure_code, destination_code, trip.start_date, trip.end_date),
                 maps.research(destination, intent.interests),
-                places.search(destination, intent.interests, intent.style),
+                places.search(destination, intent.interests, intent.style, trip.start_date, trip.end_date),
                 return_exceptions=True,
             )
         flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)

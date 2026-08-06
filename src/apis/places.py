@@ -23,7 +23,13 @@ def _normalize(property_: dict) -> dict:
     }
 
 
-async def search(destination: Optional[str], interests: list[str], style: list[str]) -> list[dict]:
+async def search(
+    destination: Optional[str],
+    interests: list[str],
+    style: list[str],
+    check_in_date: Optional[str] = None,
+    check_out_date: Optional[str] = None,
+) -> list[dict]:
     """Cerca alloggi su Google Hotels via SerpAPI."""
     if not destination:
         return []
@@ -32,7 +38,9 @@ async def search(destination: Optional[str], interests: list[str], style: list[s
     if interests:
         query = f"hotels in {destination}: {interests[0]}"
 
-    check_in, check_out = _default_dates()
+    check_in, check_out = check_in_date, check_out_date
+    if not check_in or not check_out:
+        check_in, check_out = _default_dates()
     try:
         data = await serpapi_search(
             {
