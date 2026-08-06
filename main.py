@@ -1,12 +1,21 @@
 from contextlib import asynccontextmanager
+import logging
 
 import asyncpg
 import redis.asyncio as redis_async
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from rich.logging import RichHandler
 
 from src.settings import get_settings
 from src.routers import trips
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[RichHandler(rich_tracebacks=True, show_time=True, show_path=True, markup=True)],
+)
 
 settings = get_settings()
 

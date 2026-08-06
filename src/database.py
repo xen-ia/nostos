@@ -1,4 +1,5 @@
 import asyncpg
+import json
 from datetime import date
 from uuid import UUID
 
@@ -22,15 +23,16 @@ class Database:
         free_text: str,
         email_subject: str,
         email_body: str,
+        package: dict | None = None,
     ) -> None:
         await self._pool.execute(
             """
             INSERT INTO trip_history (
                 id, email, destination, start_date, end_date, flexible_dates,
                 travelers_count, travelers_type, budget_range, departure_location,
-                free_text, email_subject, email_body
+                free_text, email_subject, email_body, package_json
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
             """,
             UUID(trip_id),
             email,
@@ -45,4 +47,5 @@ class Database:
             free_text,
             email_subject,
             email_body,
+            json.dumps(package) if package is not None else None,
         )

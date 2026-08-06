@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     email_from_address: str = "Nostos <onboarding@resend.dev>"
 
+    # SerpAPI
+    serpapi_key: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
