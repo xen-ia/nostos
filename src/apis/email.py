@@ -60,6 +60,11 @@ def build_html_email(content: dict) -> str:
           </td>
         </tr>
         <tr>
+          <td style="padding:20px 32px 8px;">
+            <div style="font-size:15px;line-height:1.6;color:#33302a;font-weight:bold;">{_e(content['cta'])}</div>
+          </td>
+        </tr>
+        <tr>
           <td style="padding:0 32px 8px;">
             <div style="background:#f6f3eb;border-left:3px solid #c8b89a;border-radius:6px;padding:16px 18px;font-size:13px;line-height:1.6;color:#5c5648;">
               {_e(content['honest_note'])}

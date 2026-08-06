@@ -17,6 +17,8 @@ logger = logging.getLogger("nostos.pipeline")
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
+CTA = "Se il viaggio ti ha incuriosito, rispondici a questo indirizzo: ne parliamo di persona."
+
 
 class TripIntent(BaseModel):
     destination: Optional[str] = None
@@ -202,6 +204,8 @@ class TripOrchestrator(BaseOrchestrator):
             parts.append(f"   {item['link']}")
             lines.append("\n".join(parts))
         lines.append("")
+        lines.append(email_content["cta"])
+        lines.append("")
         lines.append(email_content["honest_note"])
         lines.append("")
         lines.append("Buon ritorno a casa,")
@@ -282,6 +286,7 @@ class TripOrchestrator(BaseOrchestrator):
         async with self._timed("compose_email (LLM)"):
             email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
         email_content["honest_note"] = HONEST_NOTE
+        email_content["cta"] = CTA
 
         body_text = self._compose_body_text(email_content)
         body_html = build_html_email(email_content)
