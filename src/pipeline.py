@@ -17,7 +17,7 @@ logger = logging.getLogger("nostos.pipeline")
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Se il viaggio ti ha incuriosito, rispondici a questo indirizzo: ne parliamo di persona."
+CTA = "Se la proposta ti incuriosisce, questo è solo l'inizio: c'è molto altro di cui parlare. Continuiamo insieme."
 
 
 class TripIntent(BaseModel):
