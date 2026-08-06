@@ -95,11 +95,14 @@ class EmailSender:
         resend.api_key = api_key
         self._from = from_address
 
-    async def send(self, to: str, subject: str, body: str, html: str | None = None) -> None:
+    async def send(self, to: str, subject: str, body: str, html: str | None = None, timeout: float = 30.0) -> None:
         payload: dict = {"from": self._from, "to": to, "subject": subject, "text": body}
         if html:
             payload["html"] = html
-        response = await asyncio.to_thread(resend.Emails.send, payload)
+        try:
+            response = await asyncio.wait_for(asyncio.to_thread(resend.Emails.send, payload), timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise EmailSendError(f"Timeout dopo {timeout}s nell'invio email") from exc
         if not response or "id" not in response:
             raise EmailSendError(f"Invio fallito, risposta inattesa: {response}")
         logger.info("email inviata a %s (id=%s)", to, response["id"])
