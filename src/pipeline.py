@@ -82,16 +82,13 @@ EMAIL_CONTENT_SCHEMA = {
         },
         "opening": {
             "type": "string",
-            "description": (
-                "Frase d'attacco non banale che aggancia subito il lettore, ~50 parole in "
-                "2-3 frasi. Non presentarti come AI qui."
-            ),
+            "description": "Una sola frase d'attacco non banale che aggancia subito il lettore. Non presentarti come AI.",
         },
         "understanding": {
             "type": "string",
             "description": (
-                "2-3 frasi, tono discorsivo e un po' prolisso, in cui dimostri di aver capito "
-                "davvero cosa cerca il viaggiatore: riprendi interessi, stile e ritmo della richiesta."
+                "1-2 frasi secche che dimostrano di aver capito cosa cerca il viaggiatore: "
+                "riprendi interessi, stile e ritmo della richiesta, con vicinanza ma senza prolissità."
             ),
         },
         "resources": {
@@ -114,8 +111,8 @@ EMAIL_CONTENT_SCHEMA = {
         "honest_note": {
             "type": "string",
             "description": (
-                "1-2 frasi: accenna che l'email è stata preparata con il supporto di un assistente "
-                "AI (senza dire il nome), ricorda che prezzi/date vanno verificati, invita a rispondere."
+                "Una sola riga: l'email è stata preparata con Xen-IA, assistente AI, e si invitano "
+                "a verificare prezzi/date."
             ),
         },
     },
@@ -243,29 +240,22 @@ class TripOrchestrator(BaseOrchestrator):
             "places": places_list[:3],
         }
 
-        prompt = f"""Sei Xen-IA, un'assistente AI che aiuta a comporre viaggi autentici, lontani dal
-        turismo di massa. Devi scrivere un'email a una persona che ha appena raccontato il viaggio
-        che sogna.
+        prompt = f"""Sei Xen-IA, un'assistente AI che compone viaggi autentici, lontani dal turismo
+        di massa. Scrivi un'email per chi ha appena raccontato il viaggio che sogna.
 
-        STRUTTURA OBBLIGATORIA dell'email (in campi separati):
-        1) opening: 2-3 frasi (~50 parole), frase d'attacco non banale che aggancia subito il
-           lettore. NON presentarti come Xen-IA qui.
-        2) understanding: 2-3 frasi che dimostrano di aver capito davvero cosa cerca il
-           viaggiatore — riprendi interessi, stile e ritmo della richiesta, con tono discorsivo
-           e un po' prolisso, per creare vicinanza.
-        3) resources: TRE voci (dalle risorse sotto), ciascuna presa PAROLA PER PAROLA dai dati
-           reali (nome, prezzo, link). Niente di inventato.
-        4) honest_note: 1-2 frasi che accennano che l'email è stata preparata con il supporto di
-           un assistente AI (senza ripetere il nome Xen-IA), ricordano che prezzi/date vanno
-           verificati, e invitano a rispondere per ragionarci insieme.
+        STRUTTURA (in campi separati, essenziale — il layout rende le sezioni già leggibili):
+        1) opening: UNA frase d'attacco non banale, che aggancia subito. Non presentarti come AI.
+        2) understanding: 1-2 frasi secche che mostrano di aver capito cosa cerca (interessi, stile,
+           ritmo) — vicinanza, senza prolissità.
+        3) resources: TRE voci (dalle risorse sotto), prese PAROLA PER PAROLA (nome, prezzo, link).
+           Niente di inventato.
+        4) honest_note: UNA sola riga che dice che l'email è stata preparata con Xen-IA, assistente
+           AI, e invita a verificare prezzi/date.
 
         REGOLE:
-        - Scrivere in italiano, TESTO PIANO: niente markdown, asterischi, trattini o hashtag
-          dentro i campi.
-        - Usa esclusivamente le risorse elencate sotto; se una categoria è vuota, non forzarla e
-          non inventare nulla.
-        - opening + understanding + honest_note più ampi; resources stringati.
-        - Firma NON inclusa nei campi: viene aggiunta dal sistema.
+        - Italiano, TESTO PIANO: niente markdown, asterischi, trattini o hashtag.
+        - Solo risorse elencate sotto; se una categoria è vuota non forzarla e non inventare.
+        - Massimo 2-3 frasi in totale tra opening e understanding. Firma aggiunta dal sistema.
 
         CONTESTO VIAGGIO:
         Interessi: {', '.join(intent.interests) or 'non specificati'}

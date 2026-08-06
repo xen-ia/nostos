@@ -39,7 +39,7 @@ def build_html_email(content: dict) -> str:
              style="background:#fff;border:1px solid #e4dfd5;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
         <tr>
           <td style="padding:28px 32px;border-bottom:1px solid #ece6da;">
-            <div style="font-size:26px;letter-spacing:4px;color:#1f2a24;font-weight:bold;">NOSTOS</div>
+            <div style="font-size:26px;letter-spacing:4px;color:#1f2a24;font-weight:bold;">Νόστος-Ξενία</div>
             <div style="font-size:13px;letter-spacing:1px;color:#8a8372;margin-top:2px;">viaggi autentici, lontano dal turismo di massa</div>
           </td>
         </tr>
