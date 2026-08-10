@@ -97,7 +97,7 @@ class EmailSender:
         resend.api_key = api_key
         self._from = from_address
 
-    async def send(self, to: str, subject: str, body: str, html: str | None = None, timeout: float = 30.0) -> None:
+    async def send(self, to: str, subject: str, body: str, html: str | None = None, timeout: float = 60.0) -> None:
         payload: dict = {"from": self._from, "to": to, "subject": subject, "text": body}
         if html:
             payload["html"] = html

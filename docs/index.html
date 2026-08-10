@@ -206,6 +206,15 @@
     text-align: center;
   }
 
+  .foot {
+    max-width: 640px;
+    margin: 2.5rem auto 0;
+    text-align: center;
+    font-size: 0.76rem;
+    letter-spacing: 0.05em;
+    color: #9aa3ad;
+  }
+
   @media (max-width: 560px) {
     .field-group { grid-template-columns: 1fr; }
   }
@@ -288,6 +297,8 @@
   </form>
 
   <div id="status"></div>
+
+  <p class="foot">Nostos backend · intent via LLM → ricerche SerpAPI (voli/POI/alloggi) → email via Resend</p>
 
 <script>
   const API_BASE = "http://localhost:3072";

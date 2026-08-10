@@ -29,6 +29,7 @@ async def search(
     style: list[str],
     check_in_date: Optional[str] = None,
     check_out_date: Optional[str] = None,
+    timeout: float = 60.0,
 ) -> list[dict]:
     """Cerca alloggi su Google Hotels via SerpAPI."""
     if not destination:
@@ -51,7 +52,8 @@ async def search(
                 "hl": "it",
                 "gl": "it",
                 "currency": "EUR",
-            }
+            },
+            timeout=timeout,
         )
     except SerpAPIError:
         return []

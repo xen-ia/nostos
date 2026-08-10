@@ -34,7 +34,11 @@ class Settings(BaseSettings):
 
     # LLMs
     anthropic_api_key: str = ""
-    llm_model: str = "claude-haiku-4-5"
+    claude_model: str = "claude-haiku-4-5"
+    openai_api_key: str = ""
+    gpt_model: str = "gpt-5.6-luna"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:3b-instruct"
 
     # Email
     resend_api_key: str = ""
