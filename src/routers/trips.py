@@ -42,4 +42,4 @@ async def get_trip(trip_id: str, store: TripStore = Depends(get_trip_store)):
     try:
         return await store.get(trip_id)
     except TripNotFoundError:
-        raise HTTPException(status_code=404, detail="Viaggio non trovato o scaduto")
+        raise HTTPException(status_code=404, detail="Trip not found or expired")

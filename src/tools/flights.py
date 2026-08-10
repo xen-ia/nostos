@@ -8,7 +8,7 @@ IATA_PATTERN = re.compile(r"^[A-Z]{3}$")
 
 
 def _airport_code(value: str) -> Optional[str]:
-    """Ritorna il codice IATA se il testo è un codice di 3 lettere, altrimenti None."""
+    """Returns the IATA code if the text is a 3-letter code, otherwise None."""
     match = IATA_PATTERN.match(value.strip())
     return match.group(0) if match else None
 
@@ -35,7 +35,7 @@ async def search(
     end_date: Optional[str],
     timeout: float = 60.0,
 ) -> list[dict]:
-    """Cerca voli su Google Flights via SerpAPI."""
+    """Searches flights on Google Flights via SerpAPI."""
     departure_code = _airport_code(departure)
     arrival_code = _airport_code(destination)
     if not (departure_code and arrival_code and start_date):

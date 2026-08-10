@@ -15,7 +15,7 @@ def make_responses_tool(model: type[T]) -> dict:
     return {
         "type": "function",
         "name": EXTRACT_TOOL_NAME,
-        "description": "Estrai i campi richiesti, vincolati allo schema JSON.",
+        "description": "Extract the requested fields, constrained to the JSON schema.",
         "parameters": model.model_json_schema(),
     }
 

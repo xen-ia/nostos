@@ -17,7 +17,7 @@ def _normalize(place: dict) -> dict:
 
 
 async def research(destination: Optional[str], interests: list[str], timeout: float = 60.0) -> list[dict]:
-    """Cerca punti di interesse su Google Maps via SerpAPI."""
+    """Searches points of interest on Google Maps via SerpAPI."""
     if not destination:
         return []
 

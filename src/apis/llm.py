@@ -13,7 +13,7 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMClient(Protocol):
     async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
-        """Chiama il modello con tool-call vincolato e valida l'output nel tipo T."""
+        """Calls the model with a constrained tool-call and validates the output in type T."""
         ...
 
 

@@ -3,6 +3,7 @@
 ```md
 nostos/
 ├── main.py
+├── schema.sql
 ├── docs/
 │   └── index.html
 └── src/
@@ -13,32 +14,49 @@ nostos/
     ├── database.py
     ├── pipeline.py
     ├── apis/
+    │   ├── llm.py
+    │   ├── email.py
+    │   └── serpapi.py
     ├── tools/
+    │   ├── flights.py
+    │   ├── maps.py
+    │   └── places.py
     ├── prompts/
     └── routers/
+        └── trips.py
 ```
 
-### Ruoli principali
-- `main.py` — entrypoint FastAPI; il provider LLM e i timeout si scelgono da CLI: `uv run main.py [--claude|--gpt|--ollama] [--serpapi-timeout S] [--email-timeout S]`.
-- `src/pipeline.py` — `TripOrchestrator`: estrae l'intent via LLM → raccoglie voli/POI/alloggi da SerpAPI → compone e invia l'email.
-- `src/apis/` — provider esterni: `llm.py` (protocol + client Anthropic/OpenAI/Ollama), `email.py` (Resend), `serpapi.py` (client condiviso).
-- `src/tools/` — capacità della pipeline: schema di estrazione da modello pydantic (`__init__.py`) e ricerche `flights`/`maps`/`places`.
-- `src/prompts/system_prompt.md` — voce editoriale di Xen-IA, unica fonte delle regole per i modelli.
-
 ### Quickstart
+Fill in your API keys for the models (`anthropic` and/or `openai`) and for the services (`resend`, `serpapi`) — the latter offers a usable free plan.
 ```bash
 cp .env.example .env
 ```
 
-### Design del sistema
+Then run the server:
+```bash
+uv run main.py [--claude | --gpt | --ollama] --serpapi-timeout 180 --email-timeout 180
+```
 
-Flusso (in background dopo `POST /trips`): form → `TripStore` (Redis) → estrazione intent via LLM → ricerche SerpAPI (voli/POI/alloggi) → composizione email via LLM → invio Resend → storico su Postgres.
+and send a request from the mock frontend at [https://xen-ia.github.io/nostos/](https://xen-ia.github.io/nostos/).
 
-- **FastAPI (`main.py`)** — API + lifespan (connessioni Redis/Postgres). Provider LLM e timeout selezionati da CLI: `--claude|--gpt|--ollama`, `--serpapi-timeout`, `--email-timeout`.
-- **Redis** — job store dei trip: creazione, stato (`PENDING`/`RUNNING`/`ERROR`/…) e lock atomico `SET NX EX` contro esecuzioni doppie.
-- **Postgres** — `trip_history`: storico delle email inviate (intent, pacchetto ricercato, subject/body).
-- **LLM (`LLMClient` protocol)** — estrazione strutturata via tool-call su modelli pydantic (`TripIntent`, `EmailContent`). Implementazioni: `AnthropicClient`, `OpenAIClient` (Responses API), `OllamaClient`; provider scelto da CLI, modello fissato in settings.
-- **SerpAPI** — ricerca voli (`google_flights`), POI (`google_maps`), alloggi (`google_hotels`), con timeout configurabile. Categoria senza risultati validi → scartata; se tutte vuote, il trip si interrompe senza inviare email.
-- **Resend** — invio email transazionale (`EmailSender`), timeout configurabile.
-- **Prompts (`system_prompt.md`)** — voce editoriale Xen-IA, unica fonte delle regole; i prompt per-task apportano solo il contesto dati.
-- **Qdrant** — previsto per knowledge base/RAG (embedding dedicato, separato dall'LLM); non ancora integrato.
+### Core fundamentals
+- `main.py` — FastAPI entrypoint; the LLM provider and timeouts are chosen from the CLI: `uv run main.py [--claude|--gpt|--ollama] [--serpapi-timeout S] [--email-timeout S]`.
+- `src/pipeline.py` — `TripOrchestrator`: extracts the intent via LLM → gathers flights/POIs/accommodations from SerpAPI → composes and sends the email.
+- `src/apis/` — external providers: `llm.py` (protocol + Anthropic/OpenAI/Ollama clients), `email.py` (Resend), `serpapi.py` (shared client).
+- `src/tools/` — pipeline capabilities: pydantic extraction schema (`__init__.py`) and `flights`/`maps`/`places` searches.
+- `src/prompts/system_prompt.md` — Xen-IA editorial voice, the single source of rules for the models.
+- `src/routers/trips.py` — REST API: `POST /trips` (creates the trip and starts the background flow), `GET /trips/{id}` (status).
+- `schema.sql` — Postgres schema: `trip_history` (email history) and `feedback` (ratings).
+- `docs/index.html` — mock frontend
+
+### System design
+
+Flow (in the background after `POST /trips`): form → `TripStore` (Redis) → intent extraction via LLM → SerpAPI searches (flights/POIs/accommodations) → email composition via LLM → Resend send → Postgres history.
+
+- **FastAPI (`main.py`)** — API + lifespan (Redis/Postgres connections). LLM provider and timeouts selected from the CLI: `--claude|--gpt|--ollama`, `--serpapi-timeout`, `--email-timeout`.
+- **Redis** — trip job store: creation, status (`PENDING`/`RUNNING`/`ERROR`/…) and atomic `SET NX EX` lock against double execution.
+- **Postgres** — `trip_history`: history of sent emails (intent, searched package, subject/body) + `feedback`; schema in `schema.sql`.
+- **LLM (`LLMClient` protocol)** — structured extraction via tool-call on pydantic models (`TripIntent`, `EmailContent`). Implementations: `AnthropicClient`, `OpenAIClient` (Responses API), `OllamaClient`; provider chosen from the CLI, model fixed in settings.
+- **SerpAPI** — searches flights (`google_flights`), POIs (`google_maps`), accommodations (`google_hotels`), with a configurable timeout. Category without valid results → discarded; if all are empty, the trip stops without sending the email.
+- **Resend** — transactional email sending (`EmailSender`), configurable timeout.
+- **Prompts (`system_prompt.md`)** — Xen-IA editorial voice, the single source of rules; per-task prompts only bring in the data context.
