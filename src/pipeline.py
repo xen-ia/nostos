@@ -2,16 +2,14 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Optional
-
-from pydantic import BaseModel
 
 from src.apis.llm import LLMClient
-from src.bases.orchestrator import BaseOrchestrator
 from src.trip_store import TripResponse, TripStatus, TripStore
-from src.apis import flights, maps, places
+from src.tools import flights, maps, places
 from src.apis.email import EmailSender, build_html_email
 from src.database import Database
+from src.models import EmailContent, TripIntent
+from src.prompts import build_email_prompt, build_intent_prompt
 
 logger = logging.getLogger("nostos.pipeline")
 
@@ -20,106 +18,11 @@ HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente A
 CTA = "Se la proposta ti incuriosisce, questo è solo l'inizio: c'è molto altro di cui parlare. Continuiamo insieme."
 
 
-class TripIntent(BaseModel):
-    destination: Optional[str] = None
-    departure_airport_code: Optional[str] = None
-    destination_airport_code: Optional[str] = None
-    interests: list[str] = []
-    style: list[str] = []
-    pace: Optional[str] = None
-    constraints: list[str] = []
+class NoResourcesError(RuntimeError):
+    """Tutte le ricerche SerpAPI sono vuote o andate in timeout: trip interrotto senza inviare email."""
 
 
-TRIP_INTENT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "destination": {
-            "type": ["string", "null"],
-            "description": "Destinazione se esplicita o chiaramente deducibile, altrimenti null",
-        },
-        "departure_airport_code": {
-            "type": ["string", "null"],
-            "description": (
-                "Codice IATA dell'aeroporto di partenza (es. MXP, BCN) se deducibile "
-                "dalla richiesta, altrimenti null"
-            ),
-        },
-        "destination_airport_code": {
-            "type": ["string", "null"],
-            "description": (
-                "Codice IATA dell'aeroporto della destinazione (es. FCO, DPS, CTA) se "
-                "deducibile, altrimenti null"
-            ),
-        },
-        "interests": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Interessi concreti menzionati: es. trekking, cibo locale, storia, mare",
-        },
-        "style": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Stile/atmosfera del viaggio. Presta particolare attenzione a segnali di "
-                "rifiuto del turismo di massa (es. 'non i soliti posti', 'fuori dalle rotte "
-                "turistiche', 'autentico', 'lontano dalle folle') — quando presenti, includili "
-                "sempre esplicitamente qui."
-            ),
-        },
-        "pace": {
-            "type": ["string", "null"],
-            "description": "Ritmo del viaggio: rilassato, moderato, intenso — o null se non deducibile",
-        },
-        "constraints": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Vincoli espliciti: dieta, accessibilità, bambini, animali",
-        },
-    },
-    "required": ["interests", "style", "constraints"],
-}
-
-EMAIL_CONTENT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "subject": {
-            "type": "string",
-            "description": "Oggetto dell'email, breve e personale",
-        },
-        "opening": {
-            "type": "string",
-            "description": "Una sola frase d'attacco non banale che aggancia subito il lettore. Non presentarti come AI.",
-        },
-        "understanding": {
-            "type": "string",
-            "description": (
-                "1-2 frasi secche che dimostrano di aver capito cosa cerca il viaggiatore: "
-                "riprendi interessi, stile e ritmo della richiesta, con vicinanza ma senza prolissità."
-            ),
-        },
-        "resources": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Nome della risorsa, preso PAROLA PER PAROLA dai dati reali forniti"},
-                    "description": {"type": "string", "description": "Breve dettaglio descrittivo in italiano"},
-                    "price": {"type": "string", "description": "Prezzo indicato, es. '320 EUR' o '95 EUR/notte', preso dai dati reali"},
-                    "link": {"type": "string", "description": "URL dalla risorsa reale fornita"},
-                },
-                "required": ["name", "link"],
-            },
-            "description": (
-                "3 spunti concreti, tra voli/poi/alloggi forniti, presi PAROLA PER PAROLA dai dati "
-                "reali. Niente di inventato. Se i dati sono insufficienti, inserisci meno voci."
-            ),
-        },
-    },
-    "required": ["subject", "opening", "understanding", "resources"],
-}
-
-
-class TripOrchestrator(BaseOrchestrator):
+class TripOrchestrator:
     LOCK_TTL_SECONDS = 300
 
     @asynccontextmanager
@@ -137,12 +40,16 @@ class TripOrchestrator(BaseOrchestrator):
         email_sender: EmailSender,
         database: Database,
         trip_id: str,
+        serpapi_timeout: float = 60.0,
+        email_timeout: float = 60.0,
     ):
         self._store = store
         self._llm = llm_client
         self._email = email_sender
         self._db = database
         self._trip_id = trip_id
+        self._serpapi_timeout = serpapi_timeout
+        self._email_timeout = email_timeout
 
     async def run(self) -> None:
         claimed = await self._store.claim(self._trip_id, ttl_seconds=self.LOCK_TTL_SECONDS)
@@ -189,7 +96,11 @@ class TripOrchestrator(BaseOrchestrator):
 
     async def _send_email(self, trip: TripResponse, email_content: dict, body_text: str, body_html: str) -> None:
         await self._email.send(
-            to=trip.email, subject=email_content["subject"], body=body_text, html=body_html
+            to=trip.email,
+            subject=email_content["subject"],
+            body=body_text,
+            html=body_html,
+            timeout=self._email_timeout,
         )
 
     @staticmethod
@@ -215,17 +126,9 @@ class TripOrchestrator(BaseOrchestrator):
 
 
     async def _extract_intent(self, trip: TripResponse) -> TripIntent:
-        prompt = f"""Estrai le informazioni di viaggio da questa richiesta.
-
-        Destinazione indicata nel form: {trip.destination or "non specificata"}
-        Luogo di partenza indicato nel form: {trip.departure_location or "non specificato"}
-        Testo libero dell'utente: "{trip.free_text}"
-
-        Se possibile, riporta anche i codici IATA di partenza e destinazione.
-        """
+        prompt = build_intent_prompt(trip)
         async with self._timed("extract_intent (LLM)"):
-            raw = await self._llm.extract_json(prompt, TRIP_INTENT_SCHEMA)
-        return TripIntent.model_validate(raw)
+            return await self._llm.extract(prompt, TripIntent)
 
     async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> tuple[dict, dict]:
         destination = intent.destination or trip.destination
@@ -233,9 +136,9 @@ class TripOrchestrator(BaseOrchestrator):
         destination_code = intent.destination_airport_code or destination
         async with self._timed("serpapi (flights+maps+places)"):
             results = await asyncio.gather(
-                flights.search(departure_code, destination_code, trip.start_date, trip.end_date),
-                maps.research(destination, intent.interests),
-                places.search(destination, intent.interests, intent.style, trip.start_date, trip.end_date),
+                flights.search(departure_code, destination_code, trip.start_date, trip.end_date, timeout=self._serpapi_timeout),
+                maps.research(destination, intent.interests, timeout=self._serpapi_timeout),
+                places.search(destination, intent.interests, intent.style, trip.start_date, trip.end_date, timeout=self._serpapi_timeout),
                 return_exceptions=True,
             )
         flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)
@@ -246,6 +149,19 @@ class TripOrchestrator(BaseOrchestrator):
             else:
                 logger.info("%s: %d risultati", label, len(result))
 
+        if not flights_list and not maps_list and not places_list:
+            logger.warning(
+                "trip %s: nessuna risorsa SerpAPI (voli=%d, poi=%d, alloggi=%d) — trip interrotto senza email",
+                self._trip_id,
+                len(flights_list),
+                len(maps_list),
+                len(places_list),
+            )
+            raise NoResourcesError(
+                "Nessuna risorsa reperita da SerpAPI (tutte le ricerche vuote o in timeout): "
+                "email non inviata"
+            )
+
         package = {
             "intent": intent.model_dump(),
             "flights": flights_list[:3],
@@ -253,38 +169,15 @@ class TripOrchestrator(BaseOrchestrator):
             "places": places_list[:3],
         }
 
-        prompt = f"""Sei Xen-IA, un'assistente AI che compone viaggi autentici, lontani dal turismo
-        di massa. Scrivi un'email per chi ha appena raccontato il viaggio che sogna.
-
-        STRUTTURA (in campi separati, essenziale — il layout rende le sezioni già leggibili):
-        1) opening: UNA frase d'attacco non banale, che aggancia subito. Non presentarti come AI.
-        2) understanding: 1-2 frasi secche che mostrano di aver capito cosa cerca (interessi, stile,
-           ritmo) — vicinanza, senza prolissità.
-        3) resources: TRE voci (dalle risorse sotto), prese PAROLA PER PAROLA (nome, prezzo, link).
-           Niente di inventato.
-
-        REGOLE:
-        - Italiano, TESTO PIANO: niente markdown, asterischi, trattini o hashtag.
-        - Solo risorse elencate sotto; se una categoria è vuota non forzarla e non inventare.
-        - Massimo 2-3 frasi in totale tra opening e understanding. Firma aggiunta dal sistema.
-
-        CONTESTO VIAGGIO:
-        Interessi: {', '.join(intent.interests) or 'non specificati'}
-        Stile ricercato: {', '.join(intent.style) or 'non specificato'}
-        Ritmo: {intent.pace or 'non specificato'}
-
-        RISORSE CONSULTABILI (usa queste):
-        Voli:
-        {self._render_flights(flights_list)}
-
-        Punti di interesse:
-        {self._render_maps(maps_list)}
-
-        Alloggi:
-        {self._render_places(places_list)}
-        """
+        prompt = build_email_prompt(
+            intent,
+            self._render_flights(flights_list),
+            self._render_maps(maps_list),
+            self._render_places(places_list),
+        )
         async with self._timed("compose_email (LLM)"):
-            email_content = await self._llm.extract_json(prompt, EMAIL_CONTENT_SCHEMA)
+            content = await self._llm.extract(prompt, EmailContent)
+        email_content = content.model_dump()
         email_content["honest_note"] = HONEST_NOTE
         email_content["cta"] = CTA
 

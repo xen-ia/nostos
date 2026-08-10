@@ -4,13 +4,13 @@ from typing import Optional
 
 from src.apis.serpapi import SerpAPIError, search as serpapi_search
 
-IATA_PATTERN = re.compile(r"\b([A-Z]{3})\b")
+IATA_PATTERN = re.compile(r"^[A-Z]{3}$")
 
 
-def _airport_code(value: str) -> str:
-    """Estrae un codice IATA se presente nel testo, altrimenti usa il testo così com'è."""
-    match = IATA_PATTERN.search(value)
-    return match.group(1) if match else value
+def _airport_code(value: str) -> Optional[str]:
+    """Ritorna il codice IATA se il testo è un codice di 3 lettere, altrimenti None."""
+    match = IATA_PATTERN.match(value.strip())
+    return match.group(0) if match else None
 
 
 def _normalize(flight: dict, link: str | None = None) -> dict:
@@ -33,15 +33,18 @@ async def search(
     destination: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
+    timeout: float = 60.0,
 ) -> list[dict]:
     """Cerca voli su Google Flights via SerpAPI."""
-    if not (departure and destination and start_date):
+    departure_code = _airport_code(departure)
+    arrival_code = _airport_code(destination)
+    if not (departure_code and arrival_code and start_date):
         return []
 
     params: dict = {
         "engine": "google_flights",
-        "departure_id": _airport_code(departure),
-        "arrival_id": _airport_code(destination),
+        "departure_id": departure_code,
+        "arrival_id": arrival_code,
         "outbound_date": start_date,
         "type": 1 if end_date else 2,
         "currency": "EUR",
@@ -51,7 +54,7 @@ async def search(
         params["return_date"] = end_date
 
     try:
-        data = await serpapi_search(params)
+        data = await serpapi_search(params, timeout=timeout)
     except SerpAPIError:
         return []
 

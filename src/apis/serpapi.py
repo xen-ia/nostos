@@ -14,7 +14,7 @@ class SerpAPIError(Exception):
     """Errore applicativo per le ricerche SerpAPI fallite."""
 
 
-async def search(params: dict, timeout: float = 30.0) -> dict:
+async def search(params: dict, timeout: float = 60.0) -> dict:
     """Esegue una ricerca SerpAPI e ritorna il JSON, alzando SerpAPIError in caso di errore."""
     logger.info("serpapi: engine=%s params=%s", params.get("engine"), params)
     settings = get_settings()

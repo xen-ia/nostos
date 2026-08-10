@@ -16,7 +16,7 @@ def _normalize(place: dict) -> dict:
     }
 
 
-async def research(destination: Optional[str], interests: list[str]) -> list[dict]:
+async def research(destination: Optional[str], interests: list[str], timeout: float = 60.0) -> list[dict]:
     """Cerca punti di interesse su Google Maps via SerpAPI."""
     if not destination:
         return []
@@ -32,7 +32,8 @@ async def research(destination: Optional[str], interests: list[str]) -> list[dic
                 "q": query,
                 "type": "search",
                 "hl": "it",
-            }
+            },
+            timeout=timeout,
         )
     except SerpAPIError:
         return []
