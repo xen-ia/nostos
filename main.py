@@ -26,7 +26,7 @@ logger = logging.getLogger("nostos")
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="nostos",
-        description="Avvia il backend Nostos. Seleziona il provider LLM da usare.",
+        description="Starts the Nostos backend. Selects the LLM provider to use.",
     )
     parser.add_argument("--claude", action="store_const", const="claude", dest="provider", help="Usa Anthropic Claude")
     parser.add_argument("--gpt", action="store_const", const="gpt", dest="provider", help="Usa OpenAI GPT")
@@ -35,13 +35,13 @@ def _parse_args() -> argparse.Namespace:
         "--serpapi-timeout",
         type=float,
         default=60.0,
-        help="Timeout di ogni ricerca SerpAPI, in secondi (default: 60)",
+        help="Timeout for each SerpAPI search, in seconds (default: 60)",
     )
     parser.add_argument(
         "--email-timeout",
         type=float,
         default=60.0,
-        help="Timeout dell'invio email via Resend, in secondi (default: 60)",
+        help="Timeout for sending emails via Resend, in seconds (default: 60)",
     )
     parser.set_defaults(provider="claude")
     return parser.parse_args()
@@ -68,7 +68,7 @@ MODEL_ENV_VARS = {
 def _fail_fast() -> None:
     if not PROVIDER_MODELS[PROVIDER]:
         raise SystemExit(
-            f"Provider LLM '{PROVIDER}' senza modello: definisci {MODEL_ENV_VARS[PROVIDER]} nel .env"
+            f"LLM provider '{PROVIDER}' has no model: set {MODEL_ENV_VARS[PROVIDER]} in .env"
         )
 
 
@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
     app.state.llm_provider = PROVIDER
     app.state.serpapi_timeout = SERPAPI_TIMEOUT
     app.state.email_timeout = EMAIL_TIMEOUT
-    logger.info("LLM provider: %s — modello: %s", PROVIDER, PROVIDER_MODELS[PROVIDER])
+    logger.info("LLM provider: %s — model: %s", PROVIDER, PROVIDER_MODELS[PROVIDER])
     logger.info("SerpAPI timeout: %.1fs", SERPAPI_TIMEOUT)
     logger.info("Email timeout: %.1fs", EMAIL_TIMEOUT)
     app.state.redis = redis_async.from_url(settings.redis_url, decode_responses=True)

@@ -104,7 +104,7 @@ class EmailSender:
         try:
             response = await asyncio.wait_for(asyncio.to_thread(resend.Emails.send, payload), timeout=timeout)
         except asyncio.TimeoutError as exc:
-            raise EmailSendError(f"Timeout dopo {timeout}s nell'invio email") from exc
+            raise EmailSendError(f"Email send timed out after {timeout}s") from exc
         if not response or "id" not in response:
-            raise EmailSendError(f"Invio fallito, risposta inattesa: {response}")
-        logger.info("email inviata a %s (id=%s)", to, response["id"])
+            raise EmailSendError(f"Send failed, unexpected response: {response}")
+        logger.info("email sent to %s (id=%s)", to, response["id"])

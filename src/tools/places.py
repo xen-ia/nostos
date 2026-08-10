@@ -31,7 +31,7 @@ async def search(
     check_out_date: Optional[str] = None,
     timeout: float = 60.0,
 ) -> list[dict]:
-    """Cerca alloggi su Google Hotels via SerpAPI."""
+    """Searches accommodations on Google Hotels via SerpAPI."""
     if not destination:
         return []
 

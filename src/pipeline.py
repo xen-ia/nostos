@@ -19,7 +19,7 @@ CTA = "Se la proposta ti incuriosisce, questo è solo l'inizio: c'è molto altro
 
 
 class NoResourcesError(RuntimeError):
-    """Tutte le ricerche SerpAPI sono vuote o andate in timeout: trip interrotto senza inviare email."""
+    """All SerpAPI searches are empty or timed out: trip aborted without sending the email."""
 
 
 class TripOrchestrator:
@@ -61,7 +61,7 @@ class TripOrchestrator:
             await self._store.update_status(self._trip_id, TripStatus.RUNNING)
 
             intent = await self._extract_intent(trip)
-            logger.info("intent estratto: %s", intent.model_dump())
+            logger.info("intent extracted: %s", intent.model_dump())
 
             async with self._timed("compose_package"):
                 email_content, body_text, body_html, package = await self._compose_package(trip, intent)
@@ -70,10 +70,10 @@ class TripOrchestrator:
                 await self._send_email(trip, email_content, body_text, body_html)
             async with self._timed("save_history"):
                 await self._save_history(trip, email_content, body_text, package)
-            logger.info("trip %s completato: email inviata e storico salvato", self._trip_id)
+            logger.info("trip %s completed: email sent and history saved", self._trip_id)
 
         except Exception as exc:
-            logger.exception("trip %s fallito", self._trip_id)
+            logger.exception("trip %s failed", self._trip_id)
             await self._store.update_status(self._trip_id, TripStatus.ERROR, result=str(exc))
 
     async def _save_history(self, trip: TripResponse, email_content: dict, body_text: str, package: dict) -> None:
@@ -143,23 +143,23 @@ class TripOrchestrator:
             )
         flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)
 
-        for label, result in (("voli", results[0]), ("poi", results[1]), ("alloggi", results[2])):
+        for label, result in (("flights", results[0]), ("pois", results[1]), ("stays", results[2])):
             if isinstance(result, Exception):
-                logger.warning("%s: errore %s", label, type(result).__name__)
+                logger.warning("%s: error %s", label, type(result).__name__)
             else:
-                logger.info("%s: %d risultati", label, len(result))
+                logger.info("%s: %d results", label, len(result))
 
         if not flights_list and not maps_list and not places_list:
             logger.warning(
-                "trip %s: nessuna risorsa SerpAPI (voli=%d, poi=%d, alloggi=%d) — trip interrotto senza email",
+                "trip %s: no SerpAPI resources (flights=%d, pois=%d, stays=%d) — trip aborted without email",
                 self._trip_id,
                 len(flights_list),
                 len(maps_list),
                 len(places_list),
             )
             raise NoResourcesError(
-                "Nessuna risorsa reperita da SerpAPI (tutte le ricerche vuote o in timeout): "
-                "email non inviata"
+                "No resources retrieved from SerpAPI (all searches empty or timed out): "
+                "email not sent"
             )
 
         package = {
@@ -188,27 +188,27 @@ class TripOrchestrator:
     @staticmethod
     def _render_flights(items: list[dict]) -> str:
         if not items:
-            return "nessun volo disponibile"
+            return "no flights available"
         return "\n".join(
             f"{i}. {it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
-            f"partenza {it.get('departure_date')}, {it.get('price_eur')} EUR — {it.get('link')}"
+            f"departure {it.get('departure_date')}, {it.get('price_eur')} EUR — {it.get('link')}"
             for i, it in enumerate(items, 1)
         )
 
     @staticmethod
     def _render_maps(items: list[dict]) -> str:
         if not items:
-            return "nessun punto di interesse"
+            return "no points of interest"
         return "\n".join(
-            f"{i}. {it.get('name')} ({it.get('type')}, {it.get('rating')} stelle) — {it.get('link')}"
+            f"{i}. {it.get('name')} ({it.get('type')}, {it.get('rating')} stars) — {it.get('link')}"
             for i, it in enumerate(items, 1)
         )
 
     @staticmethod
     def _render_places(items: list[dict]) -> str:
         if not items:
-            return "nessun alloggio"
+            return "no accommodations available"
         return "\n".join(
-            f"{i}. {it.get('name')} — {it.get('price_per_night_eur')} EUR/notte — {it.get('link')}"
+            f"{i}. {it.get('name')} — {it.get('price_per_night_eur')} EUR/night — {it.get('link')}"
             for i, it in enumerate(items, 1)
         )
