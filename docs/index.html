@@ -9,54 +9,123 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink-navy: #1B2A3A;
-    --parchment: #F6EFDD;
-    --parchment-2: #EFE6CE;
+    --parchment: #F8F1E0;
     --terracotta: #C1683D;
+    --terracotta-deep: #9A4A2A;
     --olive: #6B7A4F;
     --gold: #D9A44A;
     --ink-text: #2B2118;
-    --ink-muted: #6E6152;
+    --ink-muted: #6A5B45;
+    --border: #A38B5C;
   }
 
   * { box-sizing: border-box; }
 
+  ::selection { background: var(--gold); color: #1B2A3A; }
+
   body {
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(ellipse at top, #24374B 0%, var(--ink-navy) 60%);
+    position: relative;
+    background-color: #16232F;
+    background-image:
+      radial-gradient(130% 90% at 50% -8%, #2A4157 0%, rgba(42,65,87,0) 48%),
+      radial-gradient(58% 40% at 50% 30%, rgba(217,164,74,0.10) 0%, rgba(217,164,74,0) 70%),
+      radial-gradient(110% 90% at 50% 118%, rgba(6,11,18,0.55) 0%, rgba(6,11,18,0) 58%),
+      radial-gradient(80% 70% at 14% 92%, rgba(34,72,108,0.30) 0%, rgba(34,72,108,0) 68%),
+      radial-gradient(70% 60% at 86% 10%, rgba(217,164,74,0.06) 0%, rgba(217,164,74,0) 62%);
     font-family: 'IBM Plex Sans', sans-serif;
-    color: var(--ink-text);
+    color: var(--parchment);
     padding: 3rem 1.25rem 5rem;
   }
+
+  /* bagliore dorato che respira dietro il biglietto */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(46% 34% at 50% 34%, rgba(217,164,74,0.10) 0%, rgba(217,164,74,0) 70%);
+    animation: glow-breathe 9s ease-in-out infinite;
+  }
+  @keyframes glow-breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+
+  .masthead, .hero, .ticket, #status, .foot { position: relative; z-index: 1; }
 
   .hero {
     text-align: center;
     max-width: 560px;
-    margin: 0 auto 2rem;
+    margin: 0 auto 2.25rem;
     color: var(--parchment);
   }
 
-  .hero .eyebrow {
+  .masthead {
+    max-width: 560px;
+    margin: 0 auto 2rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .masthead-word {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 1.35rem;
+    letter-spacing: 0.14em;
+    color: var(--parchment);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .masthead-word::before,
+  .masthead-word::after {
+    content: '';
+    width: 1.1rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold));
+  }
+  .masthead-word::after { background: linear-gradient(90deg, var(--gold), transparent); }
+  .masthead-tag {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.18em;
+    font-size: 0.62rem;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--gold);
-    display: block;
-    margin-bottom: 0.75rem;
   }
+
+  .compass {
+    width: 50px;
+    height: 50px;
+    display: block;
+    color: var(--gold);
+    margin-bottom: 0.2rem;
+  }
+  .compass-rings { transform-box: fill-box; transform-origin: center; }
+  .compass-rings circle:nth-child(2) { stroke: var(--gold); }
+  .needle { transform-box: fill-box; transform-origin: center; }
 
   .hero h1 {
     font-family: 'Fraunces', serif;
     font-weight: 600;
     font-size: clamp(2.2rem, 6vw, 3rem);
     margin: 0 0 0.6rem;
+    line-height: 1.12;
+    text-wrap: balance;
+  }
+  .hero h1 em {
+    font-style: italic;
+    font-weight: 500;
+    color: var(--gold);
   }
 
   .hero p {
     font-size: 1rem;
-    color: #C7CBD1;
+    color: #A6B1BC;
     margin: 0;
     line-height: 1.5;
   }
@@ -64,30 +133,24 @@
   .ticket {
     max-width: 640px;
     margin: 0 auto;
-    background: var(--parchment);
+    background:
+      radial-gradient(90% 60% at 50% -12%, rgba(233,205,152,0.5) 0%, transparent 70%),
+      linear-gradient(180deg, #FCF7E8 0%, #F4E9D0 100%);
+    border: 1px solid rgba(150,120,60,0.4);
     border-radius: 18px;
-    padding: 2.25rem clamp(1.25rem, 4vw, 2.5rem) 2.5rem;
-    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.5);
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem) 2.5rem;
+    box-shadow:
+      0 44px 90px -32px rgba(0,0,0,0.7),
+      0 18px 42px -18px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.65);
     position: relative;
-  }
-
-  /* perforazione stile biglietto */
-  .ticket::before {
-    content: '';
-    position: absolute;
-    top: -1px;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background-image: repeating-linear-gradient(90deg, var(--ink-navy) 0 8px, transparent 0 16px);
-    opacity: 0.15;
   }
 
   .field-group {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1.25rem 1.5rem;
-    border-top: 1px dashed var(--gold);
+    border-top: 1px solid rgba(217,164,74,0.35);
     padding-top: 1.75rem;
   }
 
@@ -103,7 +166,7 @@
     gap: 6px;
   }
 
-  .field label::before {
+  .field label:not(.flex-check)::before {
     content: '';
     width: 6px;
     height: 6px;
@@ -112,28 +175,210 @@
     flex-shrink: 0;
   }
 
-  input[type="text"], input[type="date"], input[type="number"],
+  input[type="text"], input[type="email"], input[type="date"], input[type="number"],
   select, textarea {
     font-family: 'IBM Plex Sans', sans-serif;
     font-size: 0.95rem;
     padding: 0.65rem 0.75rem;
-    border: 1.5px solid var(--parchment-2);
-    background: #fff;
+    border: 1.5px solid var(--border);
+    background: #FCF9EF;
     border-radius: 8px;
     color: var(--ink-text);
     width: 100%;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  }
+
+  ::placeholder {
+    color: var(--ink-muted);
+    opacity: 1;
   }
 
   input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: var(--terracotta);
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.25);
   }
 
   textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 
-  .dates-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .dates-row input[type="date"] { flex: 1; min-width: 0; }
+  .date-field { position: relative; }
+
+  .date-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    color: var(--ink-muted);
+    padding: 0.65rem 0.75rem;
+    border: 1.5px solid var(--border);
+    background: #FCF9EF;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .date-trigger .date-trigger-label.is-set { color: var(--ink-text); font-weight: 500; }
+  .date-trigger .chev { color: var(--terracotta-deep); flex-shrink: 0; transition: transform 0.2s ease; }
+  .date-trigger[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .date-trigger:hover { border-color: var(--gold); }
+  .date-trigger:focus-visible {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.25);
+  }
+
+  .calendar {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(540px, calc(100vw - 2.5rem));
+    background: linear-gradient(180deg, #FDF9EC 0%, #F8F0DA 100%);
+    border: 1px solid #E4D8BC;
+    border-radius: 14px;
+    box-shadow: 0 24px 50px -16px rgba(0,0,0,0.45);
+    padding: 1.1rem 1.15rem 0.9rem;
+    animation: cal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .calendar[hidden] { display: none; }
+
+  .calendar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+  }
+  .cal-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 1.02rem;
+    color: var(--ink-text);
+    white-space: nowrap;
+  }
+  .cal-nav {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 1.1rem;
+    line-height: 1;
+    width: 2rem;
+    height: 2rem;
+    border: 1.5px solid #E4D8BC;
+    border-radius: 50%;
+    background: #FCF9EF;
+    color: var(--terracotta-deep);
+    cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease, transform 0.14s ease;
+  }
+  .cal-nav:hover { border-color: var(--gold); background: #FBF1E6; transform: scale(1.06); }
+  .cal-nav:focus-visible {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.25);
+  }
+
+  .calendar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  .cal-month-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--terracotta-deep);
+    margin-bottom: 0.55rem;
+  }
+  .cal-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+  .cal-weekday {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    text-align: center;
+    padding: 0.15rem 0;
+  }
+  .cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+  .cal-day {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    color: var(--ink-text);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    height: 2.05rem;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+  }
+  .cal-day:hover:not(:disabled):not(.is-start):not(.is-end) { background: rgba(193,104,61,0.12); transform: scale(1.06); }
+  .cal-day:disabled { color: #C9BFA8; cursor: default; }
+  .cal-day.is-today { font-weight: 600; color: var(--terracotta-deep); position: relative; }
+  .cal-day.is-today::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--gold);
+    transform: translateX(-50%);
+  }
+  .cal-day.in-range { background: rgba(107,122,79,0.16); border-radius: 0; }
+  .cal-day.is-start, .cal-day.is-end {
+    background: var(--terracotta-deep);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 8px;
+    box-shadow: 0 3px 8px -4px rgba(0,0,0,0.35);
+  }
+  .cal-day.is-start { border-radius: 8px 0 0 8px; }
+  .cal-day.is-end { border-radius: 0 8px 8px 0; }
+  .cal-day:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+  }
+
+  .calendar-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgba(217,164,74,0.35);
+  }
+  .cal-legend { font-size: 0.78rem; color: var(--ink-muted); }
+  .cal-clear {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--terracotta-deep);
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .cal-clear:hover { background: rgba(217,164,74,0.12); }
+  .cal-clear:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.25);
+  }
+
+  @keyframes cal-in {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
 
   .flex-check {
     display: flex;
@@ -161,40 +406,92 @@
     font-size: 0.72rem;
     letter-spacing: 0.03em;
     text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     background: transparent;
-    border: 1.5px dashed var(--olive);
-    color: var(--olive);
+    border: 1.5px dashed var(--chip, var(--olive));
+    color: var(--chip, var(--olive));
     padding: 0.4rem 0.8rem;
     border-radius: 999px;
     cursor: pointer;
-    transition: transform 0.12s ease, background 0.12s ease;
+    transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
   }
+  .chip svg { flex-shrink: 0; }
+  .chip:nth-child(1) { --chip: #5E6E46; --chip-soft: rgba(94,110,70,0.12); }
+  .chip:nth-child(2) { --chip: #A84E28; --chip-soft: rgba(168,78,40,0.12); }
+  .chip:nth-child(3) { --chip: #8C6510; --chip-soft: rgba(140,101,16,0.14); }
+  .chip:nth-child(4) { --chip: #7A3B22; --chip-soft: rgba(122,59,34,0.14); }
+  .chip:nth-child(5) { --chip: #7E6133; --chip-soft: rgba(126,97,51,0.14); }
+
   .chip:nth-child(odd) { transform: rotate(-1.5deg); }
   .chip:nth-child(even) { transform: rotate(1.5deg); }
-  .chip:hover { background: rgba(107,122,79,0.08); }
+  .chip:hover { background: var(--chip-soft); transform: rotate(0deg) scale(1.05); }
   .chip.active {
-    background: var(--olive);
-    color: var(--parchment);
+    background: var(--chip);
+    border-color: var(--chip);
+    color: #fff;
+    box-shadow: 0 4px 10px -6px rgba(0,0,0,0.45);
     transform: rotate(0deg) scale(1.03);
   }
 
-  .submit-row { margin-top: 2rem; text-align: center; }
+  .submit-row {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    text-align: center;
+    position: relative;
+    border-top: 1px solid rgba(150,127,87,0.5);
+  }
+  .submit-row .submit-boat {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border-radius: 50%;
+    background: var(--parchment);
+    border: 1.5px solid var(--terracotta-deep);
+    color: var(--terracotta-deep);
+    box-sizing: border-box;
+  }
 
   button[type="submit"] {
     font-family: 'IBM Plex Sans', sans-serif;
     font-weight: 600;
     font-size: 1rem;
-    background: var(--terracotta);
     color: var(--parchment);
     border: none;
-    padding: 0.85rem 2.2rem;
+    padding: 0.9rem 2.5rem;
     border-radius: 999px;
     cursor: pointer;
-    box-shadow: 0 10px 20px -8px rgba(193,104,61,0.55);
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    overflow: hidden;
+    background: linear-gradient(135deg, #A84E28 0%, #8F4323 100%);
+    box-shadow: 0 12px 24px -10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.22);
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
   }
-  button[type="submit"]:hover { transform: translateY(-1px); box-shadow: 0 14px 26px -8px rgba(193,104,61,0.65); }
-  button[type="submit"]:disabled { opacity: 0.6; cursor: default; transform: none; }
+  button[type="submit"] svg { flex-shrink: 0; transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+  button[type="submit"]::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 42%;
+    background: linear-gradient(105deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%);
+    transform: translateX(-170%) skewX(-18deg);
+    transition: transform 0.55s ease;
+    pointer-events: none;
+  }
+  button[type="submit"]:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.05); box-shadow: 0 18px 34px -12px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.22); }
+  button[type="submit"]:hover:not(:disabled) svg { transform: translateX(3px); }
+  button[type="submit"]:hover:not(:disabled)::after { transform: translateX(340%) skewX(-18deg); }
+  button[type="submit"]:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+  button[type="submit"]:disabled { opacity: 0.65; cursor: default; }
 
   #status {
     max-width: 640px;
@@ -205,6 +502,8 @@
     white-space: pre-wrap;
     text-align: center;
   }
+  #status.is-error { color: #E0896E; }
+  #status.is-done { color: #B4BE92; }
 
   .foot {
     max-width: 640px;
@@ -215,16 +514,130 @@
     color: #9aa3ad;
   }
 
+  /* ---- motion ---- */
+
+  .masthead,
+  .hero h1,
+  .hero p {
+    animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .masthead { animation-delay: 0.05s; }
+  .hero h1 { animation-delay: 0.14s; }
+  .hero p { animation-delay: 0.24s; }
+
+  .ticket {
+    animation: ticket-in 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+  }
+
+  .chip {
+    animation: chip-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .chip:nth-child(1) { animation-delay: 0.62s; }
+  .chip:nth-child(2) { animation-delay: 0.7s; }
+  .chip:nth-child(3) { animation-delay: 0.78s; }
+  .chip:nth-child(4) { animation-delay: 0.86s; }
+  .chip:nth-child(5) { animation-delay: 0.94s; }
+
+  #status {
+    transition: color 0.3s ease, opacity 0.3s ease;
+  }
+  #status.is-error,
+  #status.is-done,
+  #status:not(:empty) {
+    animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes ticket-in {
+    0% { opacity: 0; transform: translateY(34px) scale(0.985); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes chip-in {
+    from { opacity: 0; transform: translateY(6px) rotate(0deg); }
+    to { opacity: 1; }
+  }
+
+  /* momento focale: l'ago della bussola si assesta sulla rotta */
+  .compass-rings { animation: compass-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+  .needle { animation: needle-settle 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both; }
+
+  @keyframes compass-in {
+    from { opacity: 0; transform: scale(0.9); filter: blur(3px); }
+    to { opacity: 1; transform: scale(1); filter: blur(0); }
+  }
+  @keyframes needle-settle {
+    0% { transform: rotate(26deg); opacity: 0.2; }
+    40% { transform: rotate(-13deg); opacity: 1; }
+    65% { transform: rotate(6deg); }
+    82% { transform: rotate(-2deg); }
+    100% { transform: rotate(0deg); opacity: 1; }
+  }
+
+  .is-loading::after {
+    content: '';
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    margin-left: 0.55em;
+    vertical-align: -0.1em;
+    border: 2px solid rgba(246,239,221,0.35);
+    border-top-color: var(--parchment);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .masthead, .hero h1, .hero p,
+    .ticket, .chip, #status, .calendar, body::before,
+    .compass-rings, .needle {
+      animation: none !important;
+    }
+    button[type="submit"], button[type="submit"]::after,
+    button[type="submit"] svg, .chip, .date-trigger, .cal-nav { transition: none !important; }
+  }
+
   @media (max-width: 560px) {
     .field-group { grid-template-columns: 1fr; }
+    .calendar { right: auto; left: 0; width: 100%; }
+    .calendar-grid { grid-template-columns: 1fr; gap: 0.9rem; }
+    .cal-day { height: 2.35rem; }
   }
 </style>
 </head>
 <body>
 
+  <div class="masthead">
+    <svg class="compass" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <g class="compass-rings">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <circle cx="24" cy="24" r="16.5" fill="none" stroke-width="0.8" opacity="0.6"/>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M24 5.5 26 24 24 42.5 22 24Z"/>
+        <path d="M5.5 24 24 22 42.5 24 24 26Z"/>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+        <path d="M24 2.5V5M24 43v-2.5M2.5 24H5M43 24h-2.5"/>
+      </g>
+      <g class="needle">
+        <path d="M24 7 26.4 24 21.6 24Z" fill="#B07A1E"/>
+        <path d="M24 41 26.4 24 21.6 24Z" fill="#A84E28"/>
+      </g>
+      <circle class="compass-pivot" cx="24" cy="24" r="2" fill="currentColor"/>
+    </svg>
+    <span class="masthead-word">Νόστος·Ξενία</span>
+    <span class="masthead-tag">viaggi autentici, lontano dal turismo di massa</span>
+  </div>
+
   <div class="hero">
-    <span class="eyebrow">Nostos · viaggi autentici</span>
-    <h1>Racconta il viaggio che cerchi</h1>
+    <h1>Racconta il <em>viaggio</em> che cerchi</h1>
     <p>Niente cataloghi, niente pacchetti standard. Ci pensiamo noi a comporre l'itinerario, tu dicci solo cosa conta per te.</p>
   </div>
 
@@ -240,11 +653,28 @@
         <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto per farti sorprendere">
       </div>
 
-      <div class="field">
-        <label for="start_date">Quando?</label>
-        <div class="dates-row">
-          <input type="date" id="start_date">
-          <input type="date" id="end_date">
+      <div class="field date-field">
+        <label for="date-trigger">Quando?</label>
+        <button type="button" class="date-trigger" id="date-trigger"
+                aria-haspopup="dialog" aria-expanded="false" aria-controls="calendar">
+          <span class="date-trigger-label" id="date-trigger-label">Scegli le date</span>
+          <svg class="chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <input type="hidden" id="start_date" name="start_date">
+        <input type="hidden" id="end_date" name="end_date">
+        <div class="calendar" id="calendar" role="dialog" aria-label="Scegli le date del viaggio" hidden>
+          <div class="calendar-head">
+            <button type="button" class="cal-nav" id="cal-prev" aria-label="Mese precedente">‹</button>
+            <span class="cal-title" id="cal-title"></span>
+            <button type="button" class="cal-nav" id="cal-next" aria-label="Mese successivo">›</button>
+          </div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+          <div class="calendar-foot">
+            <span class="cal-legend" id="cal-legend"></span>
+            <button type="button" class="cal-clear" id="cal-clear">Cancella</button>
+          </div>
         </div>
         <label class="flex-check"><input type="checkbox" id="flexible_dates"> Date flessibili</label>
       </div>
@@ -282,17 +712,60 @@
         <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
         <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..."></textarea>
         <div class="chips">
-          <button type="button" class="chip" data-text="trekking e natura">🥾 Trekking</button>
-          <button type="button" class="chip" data-text="cibo e tradizioni locali">🍝 Cibo locale</button>
-          <button type="button" class="chip" data-text="storia e cultura">🏛️ Storia</button>
-          <button type="button" class="chip" data-text="mare e relax">🌊 Mare</button>
-          <button type="button" class="chip" data-text="ritmo lento, lontano dalle folle">🐢 Ritmo lento</button>
+          <button type="button" class="chip" data-text="trekking e natura">
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M2.5 14.5 7 6.5l2.5 4 1.5-2.5 2.5 4 4-6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2.5 14.5h15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Trekking</span>
+          </button>
+          <button type="button" class="chip" data-text="cibo e tradizioni locali">
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M3 8a7 4.5 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M3 8h14M4.5 8l-.5 4a5 4 0 0 0 4 4h4a5 4 0 0 0 4-4l-.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 12.5v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Cibo locale</span>
+          </button>
+          <button type="button" class="chip" data-text="storia e cultura">
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M5 16.5V8a5 5 0 0 1 10 0v8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3 16.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M7 8h2m2 0h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Storia</span>
+          </button>
+          <button type="button" class="chip" data-text="mare e relax">
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M2 8c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M2 12.5c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Mare</span>
+          </button>
+          <button type="button" class="chip" data-text="ritmo lento, lontano dalle folle">
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+              <path d="M3 10a7 7 0 1 0 14 0 7 7 0 1 0-14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M10 6.5V10l2.5 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Ritmo lento</span>
+          </button>
         </div>
       </div>
     </div>
 
     <div class="submit-row">
-      <button type="submit" id="submit-btn">Trova il mio viaggio</button>
+      <svg class="submit-boat" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M2.5 11h11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M3.2 11 5 13.6h6L12.8 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M8 10.5V4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M8 4.8l3.4 3.4H8z" fill="currentColor"/>
+      </svg>
+      <button type="submit" id="submit-btn">
+        Trova il mio viaggio
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
   </form>
 
@@ -316,7 +789,7 @@
     coppia: { min: 2, max: 2 },
     famiglia: { min: 2, max: null },
     amici: { min: 2, max: null },
-    gruppo: { min: 4, max: null },
+    gruppo: { min: 3, max: null },
   };
 
   function syncTypeOptions(count) {
@@ -325,10 +798,15 @@
       const invalid = count < c.min || (c.max !== null && count > c.max);
       opt.disabled = invalid;
     });
-    // se il tipo selezionato non è più valido, passa al primo valido
+    // se il tipo selezionato non è più valido, passa al più adatto (soglia minima più alta)
     if (typeSelect.options[typeSelect.selectedIndex].disabled) {
-      const firstValid = [...typeSelect.options].find(o => !o.disabled);
-      if (firstValid) typeSelect.value = firstValid.value;
+      const enabled = [...typeSelect.options].filter(o => !o.disabled);
+      if (enabled.length) {
+        typeSelect.value = enabled
+          .reduce((acc, o) =>
+            TYPE_CONSTRAINTS[o.value].min > TYPE_CONSTRAINTS[acc.value].min ? o : acc)
+          .value;
+      }
     }
   }
 
@@ -347,9 +825,239 @@
   // applica subito lo stato iniziale (1 persona → solo le opzioni valide per 1)
   syncTypeOptions(Number(countInput.value) || 1);
 
+  // ---- calendario intervallo unico ----
+  const MONTHS_IT = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
+  const WEEKDAYS_IT = ["Lu","Ma","Me","Gi","Ve","Sa","Do"];
+
+  const dateTrigger = document.getElementById("date-trigger");
+  const dateLabel = document.getElementById("date-trigger-label");
+  const calendar = document.getElementById("calendar");
+  const calTitle = document.getElementById("cal-title");
+  const calGrid = document.getElementById("calendar-grid");
+  const calLegend = document.getElementById("cal-legend");
+  const startInput = document.getElementById("start_date");
+  const endInput = document.getElementById("end_date");
+
+  let viewYear, viewMonth;
+  let rangeStart = null;
+  let rangeEnd = null;
+  let hoverDate = null;
+
+  const _today = new Date();
+  _today.setHours(0,0,0,0);
+  const _todayKey = _today.toISOString().slice(0,10);
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function toKey(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+  function parseKey(k){ const [y,m,d] = k.split("-").map(Number); return new Date(y, m-1, d); }
+  function isSameDay(a,b){ return toKey(a) === toKey(b); }
+
+  function monthTitle(y, m){ return MONTHS_IT[m].charAt(0).toUpperCase() + MONTHS_IT[m].slice(1) + " " + y; }
+
+  function renderCalendar(){
+    const y1 = viewYear, m1 = viewMonth;
+    const y2 = m1 === 11 ? y1 + 1 : y1, m2 = (m1 + 1) % 12;
+    calTitle.textContent = `${monthTitle(y1,m1)} – ${monthTitle(y2,m2)}`;
+    calGrid.innerHTML = "";
+    calGrid.appendChild(buildMonth(y1, m1));
+    calGrid.appendChild(buildMonth(y2, m2));
+    updateLegend();
+  }
+
+  function buildMonth(year, month){
+    const wrap = document.createElement("div");
+    wrap.className = "cal-month";
+
+    const title = document.createElement("div");
+    title.className = "cal-month-title";
+    title.textContent = monthTitle(year, month);
+    wrap.appendChild(title);
+
+    const week = document.createElement("div");
+    week.className = "cal-week";
+    WEEKDAYS_IT.forEach(d => {
+      const s = document.createElement("span");
+      s.className = "cal-weekday";
+      s.textContent = d;
+      week.appendChild(s);
+    });
+    wrap.appendChild(week);
+
+    const days = document.createElement("div");
+    days.className = "cal-days";
+    const first = new Date(year, month, 1);
+    const offset = (first.getDay() + 6) % 7; // settimana che inizia di lunedì
+    const count = new Date(year, month + 1, 0).getDate();
+
+    for (let i = 0; i < offset; i++){
+      const b = document.createElement("span");
+      b.className = "cal-blank";
+      days.appendChild(b);
+    }
+    for (let d = 1; d <= count; d++){
+      days.appendChild(buildDay(year, month, d));
+    }
+    wrap.appendChild(days);
+    return wrap;
+  }
+
+  function buildDay(year, month, day){
+    const dt = new Date(year, month, day);
+    const key = toKey(dt);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cal-day";
+    btn.textContent = day;
+    btn.dataset.key = key;
+    if (key < _todayKey) btn.disabled = true;
+    if (key === _todayKey) btn.classList.add("is-today");
+    btn.setAttribute("aria-label", `${day} ${MONTHS_IT[month]} ${year}`);
+    btn.addEventListener("click", () => pickDate(dt));
+    btn.addEventListener("mouseenter", () => {
+      if (rangeStart && !rangeEnd && dt > rangeStart){ hoverDate = dt; refreshRangeClasses(); }
+    });
+    btn.addEventListener("mouseleave", () => {
+      if (hoverDate){ hoverDate = null; refreshRangeClasses(); }
+    });
+    updateDayClass(btn, dt);
+    return btn;
+  }
+
+  function updateDayClass(btn, dt){
+    const key = toKey(dt);
+    btn.classList.remove("is-start","is-end","in-range");
+    if (rangeStart && isSameDay(dt, rangeStart)) btn.classList.add("is-start");
+    if (rangeEnd && isSameDay(dt, rangeEnd)) btn.classList.add("is-end");
+    const low = rangeEnd && rangeStart ? (rangeStart < rangeEnd ? rangeStart : rangeEnd) : null;
+    const high = rangeEnd && rangeStart ? (rangeStart < rangeEnd ? rangeEnd : rangeStart) : null;
+    if (low && high && dt > low && dt < high) btn.classList.add("in-range");
+    if (rangeStart && !rangeEnd && hoverDate){
+      const lo = rangeStart < hoverDate ? rangeStart : hoverDate;
+      const hi = rangeStart < hoverDate ? hoverDate : rangeStart;
+      if (dt > lo && dt < hi) btn.classList.add("in-range");
+    }
+  }
+
+  function refreshRangeClasses(){
+    document.querySelectorAll(".cal-day").forEach(btn => {
+      const [y,m,d] = btn.dataset.key.split("-").map(Number);
+      updateDayClass(btn, new Date(y, m-1, d));
+    });
+  }
+
+  function pickDate(dt){
+    if (!rangeStart || (rangeStart && rangeEnd)){
+      rangeStart = dt;
+      rangeEnd = null;
+    } else if (dt < rangeStart){
+      rangeStart = dt;
+      rangeEnd = null;
+    } else {
+      rangeEnd = dt;
+    }
+    refreshRangeClasses();
+    updateTrigger();
+    updateLegend();
+  }
+
+  function fmtShort(d){
+    return `${d.getDate()} ${MONTHS_IT[d.getMonth()].slice(0,3)}`;
+  }
+  function fmtFull(d){
+    return `${d.getDate()} ${MONTHS_IT[d.getMonth()]}`;
+  }
+
+  function updateTrigger(){
+    if (!rangeStart){
+      dateLabel.textContent = "Scegli le date";
+      dateLabel.classList.remove("is-set");
+      startInput.value = "";
+      endInput.value = "";
+    } else if (!rangeEnd){
+      dateLabel.textContent = `Dal ${fmtShort(rangeStart)}`;
+      dateLabel.classList.add("is-set");
+      startInput.value = toKey(rangeStart);
+      endInput.value = "";
+    } else {
+      const a = rangeStart < rangeEnd ? rangeStart : rangeEnd;
+      const b = rangeStart < rangeEnd ? rangeEnd : rangeStart;
+      const sameMonth = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+      const sameYear = a.getFullYear() === b.getFullYear();
+      dateLabel.textContent = sameMonth
+        ? `${a.getDate()} – ${b.getDate()} ${MONTHS_IT[b.getMonth()]} ${b.getFullYear()}`
+        : sameYear
+          ? `${fmtFull(a)} – ${fmtFull(b)} ${b.getFullYear()}`
+          : `${fmtFull(a)} ${a.getFullYear()} – ${fmtFull(b)} ${b.getFullYear()}`;
+      dateLabel.classList.add("is-set");
+      startInput.value = toKey(a);
+      endInput.value = toKey(b);
+    }
+  }
+
+  function updateLegend(){
+    if (!rangeStart) calLegend.textContent = "Scegli partenza e ritorno";
+    else if (!rangeEnd) calLegend.textContent = "Ora scegli il ritorno";
+    else {
+      const a = rangeStart < rangeEnd ? rangeStart : rangeEnd;
+      const b = rangeStart < rangeEnd ? rangeEnd : rangeStart;
+      const nights = Math.round((b - a) / 86400000);
+      calLegend.textContent = `${fmtFull(a)} → ${fmtFull(b)} · ${nights} ${nights === 1 ? "notte" : "notti"}`;
+    }
+  }
+
+  function openCalendar(){
+    const anchor = rangeStart || _today;
+    viewYear = anchor.getFullYear();
+    viewMonth = anchor.getMonth();
+    renderCalendar();
+    calendar.hidden = false;
+    dateTrigger.setAttribute("aria-expanded", "true");
+  }
+  function closeCalendar(){
+    calendar.hidden = true;
+    dateTrigger.setAttribute("aria-expanded", "false");
+  }
+
+  dateTrigger.addEventListener("click", () => {
+    calendar.hidden ? openCalendar() : closeCalendar();
+  });
+
+  document.getElementById("cal-prev").addEventListener("click", () => {
+    viewMonth -= 1;
+    if (viewMonth < 0){ viewMonth = 11; viewYear -= 1; }
+    renderCalendar();
+  });
+  document.getElementById("cal-next").addEventListener("click", () => {
+    viewMonth += 1;
+    if (viewMonth > 11){ viewMonth = 0; viewYear += 1; }
+    renderCalendar();
+  });
+  document.getElementById("cal-clear").addEventListener("click", () => {
+    rangeStart = null;
+    rangeEnd = null;
+    hoverDate = null;
+    refreshRangeClasses();
+    updateTrigger();
+    updateLegend();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!calendar.hidden && !dateTrigger.contains(e.target) && !calendar.contains(e.target)){
+      closeCalendar();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !calendar.hidden) closeCalendar();
+  });
+
   window.addEventListener("pageshow", () => {
     form.reset();
     document.querySelectorAll(".chip.active").forEach(chip => chip.classList.remove("active"));
+    rangeStart = null;
+    rangeEnd = null;
+    hoverDate = null;
+    updateTrigger();
+    closeCalendar();
   });
   
   document.querySelectorAll(".chip").forEach(chip => {
@@ -368,6 +1076,8 @@
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     submitBtn.disabled = true;
+    submitBtn.classList.add("is-loading");
+    statusEl.className = "";
     statusEl.textContent = "Sto preparando il tuo viaggio...";
 
     const payload = {
@@ -391,11 +1101,14 @@
       });
       if (!res.ok) throw new Error(`Errore server: ${res.status}`);
       const data = await res.json();
+      statusEl.className = "is-done";
       statusEl.textContent = "Salvato:\n" + JSON.stringify(data, null, 2);
     } catch (err) {
+      statusEl.className = "is-error";
       statusEl.textContent = "Errore: " + err.message;
     } finally {
       submitBtn.disabled = false;
+      submitBtn.classList.remove("is-loading");
     }
   });
 </script>
