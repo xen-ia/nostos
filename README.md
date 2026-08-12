@@ -22,8 +22,10 @@ nostos/
     │   ├── maps.py
     │   └── places.py
     ├── prompts/
-    └── routers/
-        └── trips.py
+    ├── routers/
+    │   └── trips.py
+    ├── templates/
+    └── knowledge/
 ```
 
 ### Quickstart
@@ -38,6 +40,44 @@ uv run main.py [--claude | --gpt | --ollama] --serpapi-timeout 180 --email-timeo
 ```
 
 and send a request from the mock frontend at [https://xen-ia.github.io/nostos/](https://xen-ia.github.io/nostos/).
+
+#### CLI Test
+Instead, you can test locally by sending a curl request
+```bash
+curl -s -X POST http://localhost:3072/trips \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "tesei.edoardo997@gmail.com",
+    "destination": "Crete",
+    "departure_location": "Italy",
+    "start_date": "2027-07-30",
+    "end_date": "2027-08-30",
+    "flexible_dates": false,
+    "travelers_count": 2,
+    "travelers_type": "coppia",
+    "budget_range": "medio",
+    "free_text": "cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle. Vorrei fare una vacanza in road trip: noleggiare un van/jeep e dormire lungo il percorso"
+  }'
+```
+or
+```bash
+curl -s -X POST http://localhost:3072/trips \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "tesei.edoardo997@gmail.com",
+    "destination": "Hawaaii",
+    "departure_location": "Italy",
+    "start_date": null,
+    "end_date": null,
+    "flexible_dates": true,
+    "travelers_count": 1,
+    "travelers_type": null,
+    "budget_range": "medio",
+    "free_text": "Viaggi in barca, conoscere la cultura indigena locale. Poké, cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle."
+  }'
+```
+
+## Architecture
 
 ### Core fundamentals
 - `main.py` — FastAPI entrypoint; the LLM provider and timeouts are chosen from the CLI: `uv run main.py [--claude|--gpt|--ollama] [--serpapi-timeout S] [--email-timeout S]`.

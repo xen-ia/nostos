@@ -50,4 +50,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Last recently use cache function"""
     return Settings()
