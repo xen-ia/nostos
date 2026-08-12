@@ -6,7 +6,13 @@ from contextlib import asynccontextmanager
 from src.apis.llm import LLMClient
 from src.trip_store import TripResponse, TripStatus, TripStore
 from src.tools import flights, maps, places
-from src.apis.email import EmailSender, build_html_email
+from src.apis.email import (
+    SIGNATURE_GREETING,
+    SIGNATURE_NAME,
+    SIGNATURE_ROLE,
+    EmailSender,
+    build_html_email,
+)
 from src.database import Database
 from src.models import EmailContent, TripIntent
 from src.prompts import build_email_prompt, build_intent_prompt
@@ -15,7 +21,7 @@ logger = logging.getLogger("nostos.pipeline")
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Se la proposta ti incuriosisce, questo è solo l'inizio: c'è molto altro di cui parlare. Continuiamo insieme."
+CTA = "Se questa direzione ti somiglia, rispondi a questa email: costruiamo insieme il resto del viaggio."
 
 
 class NoResourcesError(RuntimeError):
@@ -119,9 +125,9 @@ class TripOrchestrator:
         lines.append("")
         lines.append(email_content["honest_note"])
         lines.append("")
-        lines.append("Buon ritorno a casa,")
-        lines.append("Edoardo & Chiara")
-        lines.append("CEOs@Nostos")
+        lines.append(SIGNATURE_GREETING)
+        lines.append(SIGNATURE_NAME)
+        lines.append(SIGNATURE_ROLE)
         return "\n".join(lines)
 
 
