@@ -59,3 +59,8 @@ async def search(
     link = data.get("search_metadata", {}).get("google_flights_url")
     flights = data.get("best_flights", []) + data.get("other_flights", [])
     return [_normalize(f, link) for f in flights[:5]]
+
+
+# TODO: Implementare ricerca libera: non 5 ricerche uguali, 
+# ma sondare più ricerche, da più angoli; cercare voli da più partenze 
+# e scegliere il più economico
