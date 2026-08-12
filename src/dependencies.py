@@ -37,6 +37,7 @@ def get_llm_client(
             model=settings.ollama_model,
             system_prompt=SYSTEM_PROMPT,
             base_url=settings.ollama_url,
+            num_ctx=settings.ollama_num_ctx,
         )
     return AnthropicClient(
         api_key=settings.anthropic_api_key,

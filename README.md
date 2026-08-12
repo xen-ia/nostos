@@ -41,6 +41,20 @@ uv run main.py [--claude | --gpt | --ollama] --serpapi-timeout 180 --email-timeo
 
 and send a request from the mock frontend at [https://xen-ia.github.io/nostos/](https://xen-ia.github.io/nostos/).
 
+### Locale con Ollama e Qwen3-30B-A3B
+
+The `--ollama` provider runs a local model through Ollama. The lightweight default is `qwen2.5:3b-instruct`; for a far better extraction/composition quality you can use Qwen3-30B-A3B (MoE, 3.3B active):
+
+```bash
+ollama pull qwen3:30b-a3b-instruct-2507-q4_K_M
+export NOSTOS_OLLAMA_MODEL=qwen3:30b-a3b-instruct-2507-q4_K_M
+uv run main.py --ollama --serpapi-timeout 180 --email-timeout 180
+```
+
+Notes:
+- The model is ~19GB. On 8GB-RAM machines it runs via SSD streaming/swap: each LLM extraction can take minutes, so check `GET /trips/{id}` instead of expecting a fast email. Keep the context small (`NOSTOS_OLLAMA_NUM_CTX=8192` default).
+- Qwen3 thinking mode is disabled in the client (`think=False`) so structured JSON extraction stays clean.
+
 #### CLI Test
 Instead, you can test locally by sending a curl request
 ```bash

@@ -56,10 +56,11 @@ class OpenAIClient:
 
 
 class OllamaClient:
-    def __init__(self, model: str, system_prompt: str | None = None, base_url: str | None = None):
+    def __init__(self, model: str, system_prompt: str | None = None, base_url: str | None = None, num_ctx: int = 8192):
         self._client = AsyncClient(host=base_url)
         self._model = model
         self._system_prompt = system_prompt or ""
+        self._num_ctx = num_ctx
 
     async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
         schema = make_ollama_schema(model)
@@ -78,6 +79,7 @@ class OllamaClient:
                 },
             ],
             format=schema,
-            options={"temperature": 0},
+            think=False,
+            options={"temperature": 0, "num_ctx": self._num_ctx},
         )
         return model.model_validate_json(response.message.content)
