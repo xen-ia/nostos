@@ -228,3 +228,5 @@ AGENTS.md
 PRODUCT.md
 DESIGN.md
 images
+# Local inspection queries (not part of the app schema)
+test.sql
