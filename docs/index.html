@@ -514,6 +514,36 @@
     color: #9aa3ad;
   }
 
+  .api-base {
+    max-width: 640px;
+    margin: 1.2rem auto 0;
+    text-align: center;
+  }
+  .api-base label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9aa3ad;
+    margin-bottom: 0.4rem;
+  }
+  .api-base input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(6, 11, 18, 0.55);
+    color: var(--parchment);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    text-align: center;
+  }
+  .api-base p {
+    margin: 0.4rem 0 0;
+    font-size: 0.7rem;
+    color: #7a8590;
+  }
+
   /* ---- motion ---- */
 
   .masthead,
@@ -771,10 +801,24 @@
 
   <div id="status"></div>
 
+  <div class="api-base">
+    <label for="api-base-input">API backend</label>
+    <input type="text" id="api-base-input" spellcheck="false" placeholder="http://localhost:3072/api/v1">
+    <p>Base URL del backend, salvata nel browser. Es. https://xxx.trycloudflare.com/api/v1</p>
+  </div>
+
   <p class="foot">Nostos backend · intent via LLM → ricerche SerpAPI (voli/POI/alloggi) → email via Resend</p>
 
 <script>
-  const API_BASE = "http://localhost:3072";
+  const DEFAULT_API_BASE = "http://localhost:3072/api/v1";
+  let API_BASE = localStorage.getItem("nostos_api_base") || DEFAULT_API_BASE;
+  const apiBaseInput = document.getElementById("api-base-input");
+  apiBaseInput.value = API_BASE;
+  apiBaseInput.addEventListener("change", () => {
+    API_BASE = (apiBaseInput.value.trim() || DEFAULT_API_BASE).replace(/\/+$/, "");
+    localStorage.setItem("nostos_api_base", API_BASE);
+  });
+
   const form = document.getElementById("trip-form");
   const statusEl = document.getElementById("status");
   const submitBtn = document.getElementById("submit-btn");
