@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nostos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: nostos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nostos -d nostos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 3072
+    env_file: .env
+    environment:
+      NOSTOS_HOST: 0.0.0.0
+      NOSTOS_PORT: "3072"
+      NOSTOS_REDIS_URL: redis://redis:6379/0
+      NOSTOS_POSTGRES_URL: postgresql://nostos:${POSTGRES_PASSWORD}@postgres:5432/nostos
+    ports:
+      - "80:3072"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: python -m src.infrastructure.worker
+    env_file: .env
+    environment:
+      NOSTOS_REDIS_URL: redis://redis:6379/0
+      NOSTOS_POSTGRES_URL: postgresql://nostos:${POSTGRES_PASSWORD}@postgres:5432/nostos
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
