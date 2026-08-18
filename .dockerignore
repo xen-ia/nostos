@@ -10,3 +10,4 @@ Dockerfile
 .gitignore
 AGENTS.md
 .env
+tests

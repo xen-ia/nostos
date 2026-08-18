@@ -25,5 +25,5 @@ USER nostos
 EXPOSE 3072
 
 # Default: API server. The worker is started by overriding the command
-# (e.g. `python -m src.worker`) in the platform's worker service.
+# (e.g. `python -m src.infrastructure.worker`) in the platform's worker service.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3072"]
