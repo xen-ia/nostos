@@ -25,20 +25,22 @@ class Database:
         email_body: str,
         package: dict | None = None,
         status: str = "running",
+        model: str | None = None,
     ) -> None:
         await self._pool.execute(
             """
             INSERT INTO trip_history (
                 id, email, destination, start_date, end_date, flexible_dates,
                 travelers_count, travelers_type, budget_range, departure_location,
-                free_text, email_subject, email_body, package_json, status
+                free_text, email_subject, email_body, package_json, status, model
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)
             ON CONFLICT (id) DO UPDATE SET
                 email_subject = EXCLUDED.email_subject,
                 email_body = EXCLUDED.email_body,
                 package_json = EXCLUDED.package_json,
-                status = EXCLUDED.status
+                status = EXCLUDED.status,
+                model = EXCLUDED.model
             """,
             UUID(trip_id),
             email,
@@ -55,6 +57,7 @@ class Database:
             email_body,
             json.dumps(package) if package is not None else None,
             status,
+            model,
         )
 
     async def update_status(self, trip_id: str, status: str) -> None:
@@ -78,10 +81,16 @@ class Database:
             comment,
         )
 
+    async def is_whitelisted(self, email: str) -> bool:
+        return await self._pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM email_whitelist WHERE email = $1)",
+            email.lower(),
+        )
+
     async def get_trip_history(self, trip_id: str) -> dict | None:
         row = await self._pool.fetchrow(
             """
-            SELECT id, status, email_subject, email_body, package_json, created_at
+            SELECT id, status, email_subject, email_body, package_json, timestamp, model
             FROM trip_history WHERE id = $1
             """,
             UUID(trip_id),

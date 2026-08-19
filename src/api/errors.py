@@ -14,6 +14,7 @@ class ErrorCode(StrEnum):
     RATE_LIMITED = "rate_limited"
     UNAUTHORIZED = "unauthorized"
     FORBIDDEN = "forbidden"
+    NOT_WHITELISTED = "not_whitelisted"
     CONFLICT = "conflict"
     INTERNAL_ERROR = "internal_error"
 
@@ -28,7 +29,7 @@ class APIError(Exception):
 
 def problem(status_code: int, error_code: ErrorCode, detail: str, request: Request) -> dict:
     return {
-        "type": f"https://nostos.dev/problems/{error_code.value}",
+        "type": f"https://xen-ia.org/problems/{error_code.value}",
         "title": error_code.value,
         "status": status_code,
         "detail": detail,

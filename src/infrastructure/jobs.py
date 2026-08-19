@@ -34,7 +34,17 @@ async def run_trip_job(ctx: dict, trip_id: str) -> None:
             serpapi_timeout=settings.serpapi_timeout,
             email_timeout=settings.email_timeout,
             serpapi_api_key=settings.serpapi_key or None,
+            llm_model=_active_model(settings),
         )
         await orchestrator.run()
     finally:
         await redis.aclose()
+
+
+def _active_model(settings) -> str:
+    provider = settings.llm_provider
+    if provider == "gpt":
+        return settings.gpt_model
+    if provider == "ollama":
+        return settings.ollama_model
+    return settings.claude_model
