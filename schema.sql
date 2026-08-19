@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS trip_history (
     package_json JSONB,
     status TEXT NOT NULL DEFAULT 'pending',
     model TEXT,
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT now()
+    version TEXT,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    send_datetime TIMESTAMPTZ,
+    error_message TEXT,
+    duration_seconds REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trip_history_email ON trip_history (email);
@@ -49,13 +53,35 @@ ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT '
 -- Upgrade existing databases: record which LLM model produced the trip.
 ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS model TEXT;
 
--- Upgrade existing databases: created_at was renamed to timestamp.
+-- Upgrade existing databases: created_at -> timestamp -> datetime -> processed_at.
 DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'trip_history' AND column_name = 'created_at'
     ) THEN
-        ALTER TABLE trip_history RENAME COLUMN created_at TO timestamp;
+        ALTER TABLE trip_history RENAME COLUMN created_at TO processed_at;
+    ELSIF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'trip_history' AND column_name = 'timestamp'
+    ) THEN
+        ALTER TABLE trip_history RENAME COLUMN timestamp TO processed_at;
+    ELSIF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'trip_history' AND column_name = 'datetime'
+    ) THEN
+        ALTER TABLE trip_history RENAME COLUMN datetime TO processed_at;
     END IF;
 END $$;
+
+-- Upgrade existing databases: record which nostos version produced the trip.
+ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS version TEXT;
+
+-- Upgrade existing databases: email send time (NULL until actually sent), failure reason
+-- and pipeline duration (seconds).
+ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS send_datetime TIMESTAMPTZ;
+ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS duration_seconds REAL;
+
+-- Display timestamps in Italian local time; storage stays UTC (TIMESTAMPTZ).
+ALTER DATABASE nostos SET timezone TO 'Europe/Rome';

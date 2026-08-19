@@ -69,6 +69,11 @@ async def test_happy_path_sends_email_and_saves_history(monkeypatch):
     assert db.status.get(trip.id) == TripStatus.DONE.value
     assert await store.claim(trip.id, ttl_seconds=300) is True
 
+    done_updates = [u for u in db.status_updates.get(trip.id, []) if u.get("status") == TripStatus.DONE.value]
+    assert done_updates, f"expected a DONE update, got {db.status_updates}"
+    assert done_updates[0]["send_datetime"], "send_datetime must be set on success"
+    assert done_updates[0]["duration_seconds"] >= 0
+
 
 async def test_happy_path_saves_model_in_history(monkeypatch):
     store = make_store()
@@ -179,6 +184,10 @@ async def test_llm_error_marks_trip_error():
     assert got.result is not None
     assert db.status.get(trip.id) == TripStatus.ERROR.value
     assert await store.claim(trip.id, ttl_seconds=300) is True
+
+    err_updates = [u for u in db.status_updates.get(trip.id, []) if u.get("status") == TripStatus.ERROR.value]
+    assert err_updates, f"expected an ERROR update, got {db.status_updates}"
+    assert err_updates[0]["error_message"], "error_message must be persisted on failure"
 
 
 async def test_already_claimed_returns_without_side_effects():

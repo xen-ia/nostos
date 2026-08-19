@@ -52,6 +52,7 @@ class FakeDatabase(Database):
         """whitelist=None means allow-all (for tests not exercising the gate)."""
         self.saved: list[dict] = []
         self.status: dict[str, str] = {}
+        self.status_updates: dict[str, list[dict]] = {}
         self.feedback: tuple | None = None
         self.error: Exception | None = None
         self.whitelist = whitelist
@@ -61,8 +62,9 @@ class FakeDatabase(Database):
             raise self.error
         self.saved.append(kwargs)
 
-    async def update_status(self, trip_id: str, status: str) -> None:
+    async def update_status(self, trip_id: str, status: str, **kwargs) -> None:
         self.status[trip_id] = status
+        self.status_updates.setdefault(trip_id, []).append({"status": status, **kwargs})
 
     async def save_feedback(self, trip_id: str, rating: int, comment: str | None) -> None:
         self.feedback = (trip_id, rating, comment)

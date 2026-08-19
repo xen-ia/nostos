@@ -52,6 +52,7 @@ class TripOrchestrator:
         email_timeout: float = 60.0,
         serpapi_api_key: str | None = None,
         llm_model: str | None = None,
+        app_version: str | None = None,
     ):
         self._store = store
         self._llm = llm_client
@@ -62,6 +63,7 @@ class TripOrchestrator:
         self._email_timeout = email_timeout
         self._serpapi_api_key = serpapi_api_key
         self._llm_model = llm_model
+        self._app_version = app_version
 
     async def _renew_lease(self) -> None:
         while True:
@@ -74,6 +76,7 @@ class TripOrchestrator:
             return
 
         renewer = asyncio.create_task(self._renew_lease())
+        started_at = time.monotonic()
 
         try:
             trip = await self._store.get(self._trip_id)
@@ -91,13 +94,23 @@ class TripOrchestrator:
             async with self._timed("send_email"):
                 await self._send_email(trip, email_content, body_text, body_html)
             await self._store.update_status(self._trip_id, TripStatus.DONE)
-            await self._db.update_status(self._trip_id, TripStatus.DONE.value)
+            await self._db.update_status(
+                self._trip_id,
+                TripStatus.DONE.value,
+                send_datetime=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                duration_seconds=round(time.monotonic() - started_at, 3),
+            )
             logger.info("trip %s completed: email sent and history saved", self._trip_id)
 
         except Exception as exc:
             logger.exception("trip %s failed", self._trip_id)
             await self._store.update_status(self._trip_id, TripStatus.ERROR, result=str(exc))
-            await self._db.update_status(self._trip_id, TripStatus.ERROR.value)
+            await self._db.update_status(
+                self._trip_id,
+                TripStatus.ERROR.value,
+                error_message=str(exc),
+                duration_seconds=round(time.monotonic() - started_at, 3),
+            )
         finally:
             renewer.cancel()
             await self._store.release(self._trip_id)
@@ -119,6 +132,7 @@ class TripOrchestrator:
             email_body=body_text,
             package=package,
             model=self._llm_model,
+            version=self._app_version,
         )
 
     async def _send_email(self, trip: TripResponse, email_content: dict, body_text: str, body_html: str) -> None:
@@ -222,6 +236,7 @@ class TripOrchestrator:
             self._render_flights(flights_list),
             self._render_maps(maps_list),
             self._render_places(places_list),
+            trip,
         )
         async with self._timed("compose_email (LLM)"):
             content = await self._llm.extract(prompt, EmailContent)

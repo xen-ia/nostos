@@ -781,6 +781,39 @@
       </div>
 
       <div class="field full">
+        <label for="travelers_composition">Con chi viaggi? (facoltativo)</label>
+        <input type="text" id="travelers_composition" placeholder="Es. 3 adulti, 2 bambini (6 e 9 anni)" autocomplete="off" enterkeyhint="next">
+      </div>
+
+      <div class="field full">
+        <label for="budget_amount">Budget indicativo (facoltativo)</label>
+        <input type="text" id="budget_amount" placeholder="Es. max 1500 EUR a persona" autocomplete="off" enterkeyhint="next">
+      </div>
+
+      <div class="field full">
+        <label for="travel_mode">Come preferisci muoverti?</label>
+        <select id="travel_mode">
+          <option value="indifferente" selected>Non importa</option>
+          <option value="volo">Volo</option>
+          <option value="treno">Treno</option>
+          <option value="auto">Auto</option>
+          <option value="van">Van / road trip</option>
+        </select>
+      </div>
+
+      <div class="field full">
+        <label for="stay_preference">Dove preferisci dormire?</label>
+        <select id="stay_preference">
+          <option value="indifferente" selected>Non importa</option>
+          <option value="hotel">Hotel</option>
+          <option value="b&b">B&amp;B</option>
+          <option value="agriturismo">Agriturismo</option>
+          <option value="glamping">Glamping</option>
+          <option value="camping">Camping</option>
+        </select>
+      </div>
+
+      <div class="field full">
         <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
         <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done"></textarea>
         <div class="chips">
@@ -1180,6 +1213,10 @@
       budget_range: document.getElementById("budget_range").value,
       departure_location: document.getElementById("departure_location").value || null,
       free_text: freeText.value,
+      travelers_composition: document.getElementById("travelers_composition").value || null,
+      budget_amount: document.getElementById("budget_amount").value || null,
+      travel_mode: document.getElementById("travel_mode").value,
+      stay_preference: document.getElementById("stay_preference").value,
     };
 
     try {
