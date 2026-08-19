@@ -1,6 +1,6 @@
 import asyncpg
 import json
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 
@@ -67,7 +67,7 @@ class Database:
         self,
         trip_id: str,
         status: str,
-        send_datetime: str | None = None,
+        send_datetime: datetime | None = None,
         error_message: str | None = None,
         duration_seconds: float | None = None,
     ) -> None:

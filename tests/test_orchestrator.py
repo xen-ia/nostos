@@ -72,6 +72,9 @@ async def test_happy_path_sends_email_and_saves_history(monkeypatch):
     done_updates = [u for u in db.status_updates.get(trip.id, []) if u.get("status") == TripStatus.DONE.value]
     assert done_updates, f"expected a DONE update, got {db.status_updates}"
     assert done_updates[0]["send_datetime"], "send_datetime must be set on success"
+    from datetime import datetime as dt
+
+    assert isinstance(done_updates[0]["send_datetime"], dt), "send_datetime must be a datetime object (asyncpg needs it)"
     assert done_updates[0]["duration_seconds"] >= 0
 
 

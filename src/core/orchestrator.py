@@ -3,6 +3,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from src.services.apis.llm import LLMClient
 from src.services.trip_store import TripResponse, TripStatus, TripStore
@@ -97,7 +98,7 @@ class TripOrchestrator:
             await self._db.update_status(
                 self._trip_id,
                 TripStatus.DONE.value,
-                send_datetime=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                send_datetime=datetime.now(timezone.utc),
                 duration_seconds=round(time.monotonic() - started_at, 3),
             )
             logger.info("trip %s completed: email sent and history saved", self._trip_id)
