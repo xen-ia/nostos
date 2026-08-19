@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -5,7 +7,7 @@ from fastapi.testclient import TestClient
 from src.api.errors import register_exception_handlers
 from src.api.middleware import RequestIDMiddleware
 from src.api.routers import trips as trips_router
-from src.core.schemas import TripStatus
+from src.core.schemas import TripCreateRequest, TripStatus
 from tests.fakes import FakeDatabase, FakeLLM, make_store
 from tests.test_orchestrator import EMAIL, INTENT
 
@@ -128,18 +130,38 @@ def test_idempotency_key_reuses_trip():
     assert len(arq.enqueued) == 1
 
 
-def test_auth_required_when_token_configured():
+def test_create_trip_public_no_token_required():
     app, *_ = make_app(api_token="sekret")
     with TestClient(app) as client:
-        resp = client.post("/api/v1/trips", json={"email": "a@b.com"})
-        assert resp.status_code == 401
-        assert resp.json()["type"].endswith("/unauthorized")
-        ok = client.post(
-            "/api/v1/trips",
-            json={"email": "a@b.com"},
+        resp = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Tokyo"})
+    assert resp.status_code == 202
+
+
+def test_get_trip_still_requires_token():
+    app, store, *_ = make_app(api_token="sekret")
+    trip = asyncio.run(store.create(
+        TripCreateRequest(email="test@example.com", destination="Tokyo"),
+    ))
+    with TestClient(app) as client:
+        denied = client.get(f"/api/v1/trips/{trip.id}")
+        allowed = client.get(f"/api/v1/trips/{trip.id}", headers=auth_headers("sekret"))
+    assert denied.status_code == 401
+    assert denied.json()["type"].endswith("/unauthorized")
+    assert allowed.status_code == 200
+
+
+def test_feedback_still_requires_token():
+    app, *_ = make_app(api_token="sekret")
+    with TestClient(app) as client:
+        denied = client.post("/api/v1/trips/nope/feedback", json={"rating": 5})
+        allowed = client.post(
+            "/api/v1/trips/nope/feedback",
+            json={"rating": 5},
             headers=auth_headers("sekret"),
         )
-        assert ok.status_code == 202
+    assert denied.status_code == 401
+    assert denied.json()["type"].endswith("/unauthorized")
+    assert allowed.status_code != 401
 
 
 def test_whitelist_denies_unlisted_email():

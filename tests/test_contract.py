@@ -24,7 +24,7 @@ def _frontend_source():
 
 def test_frontend_points_at_versioned_api_base():
     src = _frontend_source()
-    assert re.search(r'const DEFAULT_API_BASE = "https://nostos.xen-ia.org/api/v1"', src)
+    assert re.search(r'const API_BASE = "https://nostos.xen-ia.org/api/v1";', src)
     assert 'fetch(`${API_BASE}/trips`' in src
 
 

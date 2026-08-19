@@ -24,7 +24,6 @@ async def create_trip(
     store: TripStore = Depends(get_trip_store),
     db=Depends(get_database),
     arq=Depends(get_arq),
-    _auth: None = Depends(require_api_token),
 ):
     if not await db.is_whitelisted(payload.email):
         raise APIError(

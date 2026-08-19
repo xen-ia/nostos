@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Nostos — trova il tuo viaggio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -280,10 +280,12 @@
 
   .calendar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
   .cal-month-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.68rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1rem;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--terracotta-deep);
     margin-bottom: 0.55rem;
   }
@@ -391,8 +393,59 @@
   }
   .flex-check input { width: auto; }
 
-  .people-row { display: flex; gap: 0.5rem; }
-  .people-row input[type="number"] { max-width: 80px; }
+  .people-row { display: flex; gap: 0.5rem; align-items: stretch; }
+  .stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: #FCF9EF;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .stepper button {
+    width: 2.6rem;
+    min-height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--terracotta-deep);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stepper button:hover { background: rgba(217,164,74,0.12); }
+  .stepper button:active { background: rgba(193,104,61,0.18); }
+  .stepper button:disabled { opacity: 0.35; cursor: default; background: transparent; }
+  .stepper button:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(217,164,74,0.5);
+  }
+  .stepper input[type="number"] {
+    width: 3rem;
+    min-height: 2.5rem;
+    border: none;
+    border-radius: 0;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1rem;
+    background: transparent;
+    padding: 0;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .stepper input[type="number"]::-webkit-outer-spin-button,
+  .stepper input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .stepper input[type="number"]:focus { box-shadow: none; border: none; }
+  .stepper input[type="number"]:focus-visible { box-shadow: inset 0 0 0 2px rgba(217,164,74,0.5); }
 
   .chips {
     display: flex;
@@ -514,36 +567,6 @@
     color: #9aa3ad;
   }
 
-  .api-base {
-    max-width: 640px;
-    margin: 1.2rem auto 0;
-    text-align: center;
-  }
-  .api-base label {
-    display: block;
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #9aa3ad;
-    margin-bottom: 0.4rem;
-  }
-  .api-base input {
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: rgba(6, 11, 18, 0.55);
-    color: var(--parchment);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    text-align: center;
-  }
-  .api-base p {
-    margin: 0.4rem 0 0;
-    font-size: 0.7rem;
-    color: #7a8590;
-  }
-
   /* ---- motion ---- */
 
   .masthead,
@@ -634,10 +657,25 @@
   }
 
   @media (max-width: 560px) {
-    .field-group { grid-template-columns: 1fr; }
+    body { padding: 2rem 1rem 4rem; }
+    .masthead { margin-bottom: 1.5rem; }
+    .masthead-word { font-size: 1.2rem; }
+    .hero h1 { font-size: clamp(1.9rem, 7vw, 2.4rem); }
+    .field-group { grid-template-columns: 1fr; gap: 1.1rem; }
     .calendar { right: auto; left: 0; width: 100%; }
-    .calendar-grid { grid-template-columns: 1fr; gap: 0.9rem; }
-    .cal-day { height: 2.35rem; }
+    .calendar-grid { grid-template-columns: 1fr; gap: 0.5rem; }
+    .cal-day { height: 2.15rem; font-size: 0.9rem; }
+    .cal-weekday { font-size: 0.66rem; }
+    .cal-nav { width: 2.4rem; height: 2.4rem; }
+    .chip { font-size: 0.68rem; padding: 0.5rem 0.75rem; }
+    .date-trigger { min-height: 2.9rem; }
+    .people-row input[type="number"], .people-row select { min-height: 2.75rem; }
+    .people-row select { flex: 1; min-width: 0; }
+    .people-row { flex-wrap: wrap; }
+    .stepper button { width: 3rem; min-height: 2.75rem; }
+    .stepper input[type="number"] { min-height: 2.75rem; width: 3.2rem; font-size: 1.05rem; }
+    button[type="submit"] { width: 100%; padding: 1rem 1.5rem; }
+    .foot { font-size: 0.72rem; }
   }
 </style>
 </head>
@@ -675,12 +713,12 @@
     <div class="field-group">
       <div class="field full">
         <label for="email">La tua email</label>
-        <input type="email" id="email" required placeholder="nome@esempio.com">
+        <input type="email" id="email" required placeholder="nome@esempio.com" autocomplete="email" inputmode="email" enterkeyhint="next">
       </div>
 
       <div class="field">
         <label for="destination">Dove vuoi andare?</label>
-        <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto per farti sorprendere">
+        <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto" autocomplete="off">
       </div>
 
       <div class="field date-field">
@@ -712,7 +750,11 @@
       <div class="field">
         <label for="travelers_count">Con chi parti?</label>
         <div class="people-row">
-          <input type="number" id="travelers_count" min="1" value="1">
+          <span class="stepper">
+            <button type="button" id="people-minus" aria-label="Diminuisci viaggiatori">−</button>
+            <input type="number" id="travelers_count" min="1" value="1" inputmode="numeric" autocomplete="off" aria-label="Numero di viaggiatori">
+            <button type="button" id="people-plus" aria-label="Aumenta viaggiatori">+</button>
+          </span>
           <select id="travelers_type">
             <option value="solo">Da solo</option>
             <option value="coppia">In coppia</option>
@@ -735,12 +777,12 @@
 
       <div class="field full">
         <label for="departure_location">Parti da</label>
-        <input type="text" id="departure_location" placeholder="Es. Milano">
+        <input type="text" id="departure_location" placeholder="Es. Milano" autocomplete="off" enterkeyhint="next">
       </div>
 
       <div class="field full">
         <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
-        <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..."></textarea>
+        <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done"></textarea>
         <div class="chips">
           <button type="button" class="chip" data-text="trekking e natura">
             <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
@@ -801,23 +843,11 @@
 
   <div id="status"></div>
 
-  <div class="api-base">
-    <label for="api-base-input">API backend</label>
-    <input type="text" id="api-base-input" spellcheck="false" placeholder="http://localhost:3072/api/v1">
-    <p>Base URL del backend, salvata nel browser. Es. https://xxx.trycloudflare.com/api/v1</p>
-  </div>
-
-  <p class="foot">Nostos backend · intent via LLM → ricerche SerpAPI (voli/POI/alloggi) → email via Resend</p>
+  <p class="foot">νόστος·ξενία — viaggi autentici, lontano dal turismo di massa.<br>
+    Scritto con cura da <strong>Edoardo &amp; Chiara</strong>.</p>
 
 <script>
-  const DEFAULT_API_BASE = "https://nostos.xen-ia.org/api/v1";
-  let API_BASE = localStorage.getItem("nostos_api_base") || DEFAULT_API_BASE;
-  const apiBaseInput = document.getElementById("api-base-input");
-  apiBaseInput.value = API_BASE;
-  apiBaseInput.addEventListener("change", () => {
-    API_BASE = (apiBaseInput.value.trim() || DEFAULT_API_BASE).replace(/\/+$/, "");
-    localStorage.setItem("nostos_api_base", API_BASE);
-  });
+  const API_BASE = "https://nostos.xen-ia.org/api/v1";
 
   const form = document.getElementById("trip-form");
   const statusEl = document.getElementById("status");
@@ -858,6 +888,17 @@
     const n = Number(countInput.value) || 1;
     syncTypeOptions(n);
   });
+
+  // stepper +/- (mobile friendly: no typing required)
+  const peopleMinus = document.getElementById("people-minus");
+  const peoplePlus = document.getElementById("people-plus");
+  const setCount = (n) => {
+    n = Math.max(1, Math.min(50, Math.round(n) || 1));
+    countInput.value = String(n);
+    syncTypeOptions(n);
+  };
+  peopleMinus.addEventListener("click", () => setCount(Number(countInput.value) - 1));
+  peoplePlus.addEventListener("click", () => setCount(Number(countInput.value) + 1));
 
   typeSelect.addEventListener("change", () => {
     const c = TYPE_CONSTRAINTS[typeSelect.value];
@@ -901,10 +942,13 @@
   function renderCalendar(){
     const y1 = viewYear, m1 = viewMonth;
     const y2 = m1 === 11 ? y1 + 1 : y1, m2 = (m1 + 1) % 12;
-    calTitle.textContent = `${monthTitle(y1,m1)} – ${monthTitle(y2,m2)}`;
+    const single = window.matchMedia("(max-width: 560px)").matches;
+    calTitle.textContent = single
+      ? monthTitle(y1, m1)
+      : `${monthTitle(y1,m1)} – ${monthTitle(y2,m2)}`;
     calGrid.innerHTML = "";
     calGrid.appendChild(buildMonth(y1, m1));
-    calGrid.appendChild(buildMonth(y2, m2));
+    if (!single) calGrid.appendChild(buildMonth(y2, m2));
     updateLegend();
   }
 
@@ -1002,6 +1046,7 @@
     refreshRangeClasses();
     updateTrigger();
     updateLegend();
+    if (rangeStart && rangeEnd) closeCalendar();
   }
 
   function fmtShort(d){
@@ -1143,10 +1188,25 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Errore server: ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error(
+            "Questa email non è ancora tra gli invitati. Scrivici e ti aggiungiamo subito."
+          );
+        }
+        if (res.status === 429) {
+          throw new Error("Hai già chiesto più viaggi per oggi. Torna domani: ti aspettiamo.");
+        }
+        throw new Error(`Errore server: ${res.status}. Riprova tra un momento.`);
+      }
       const data = await res.json();
+      const name = (document.getElementById("email").value || "").split("@")[0];
       statusEl.className = "is-done";
-      statusEl.textContent = "Salvato:\n" + JSON.stringify(data, null, 2);
+      statusEl.textContent =
+        "Tutto pronto, " + (name ? name + ", " : "") +
+        "il tuo viaggio sta partendo!\nTi scriveremo presto a " +
+        document.getElementById("email").value +
+        " con i primi spunti.";
     } catch (err) {
       statusEl.className = "is-error";
       statusEl.textContent = "Errore: " + err.message;
