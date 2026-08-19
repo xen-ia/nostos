@@ -81,8 +81,10 @@ and the apex `xen-ia.org` stays free for a future landing page.
 
 - [ ] Mount `docs/index.html` as static files at `/` in the web container (FastAPI `StaticFiles`),
       API keeps `/api/v1`; no conflict with `/healthz`/`/readyz`.
-- [ ] Frontend then calls the same origin (no `API_BASE` override needed; drop the localStorage
-      fallback or default it to the same origin).
+- [ ] Frontend then calls the same origin (the `API_BASE` constant already points at the app
+      origin; only the StaticFiles mount remains).
+- [x] Remove the "API backend" banner/input (`docs/index.html`) — done in `fix/frontend`: `API_BASE`
+      is a fixed constant, no localStorage override, no endpoint URL exposed to end users.
 - [ ] Drop `https://xen-ia.github.io` from `NOSTOS_ALLOWED_ORIGINS` (keep `https://nostos.xen-ia.org`
       or relax CORS entirely since it becomes same-origin).
 - [ ] Deploy: frontend changes ship with the app image (no separate gh-pages step).
