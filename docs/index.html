@@ -810,7 +810,7 @@
   <p class="foot">Nostos backend · intent via LLM → ricerche SerpAPI (voli/POI/alloggi) → email via Resend</p>
 
 <script>
-  const DEFAULT_API_BASE = "http://localhost:3072/api/v1";
+  const DEFAULT_API_BASE = "https://nostos.xen-ia.org/api/v1";
   let API_BASE = localStorage.getItem("nostos_api_base") || DEFAULT_API_BASE;
   const apiBaseInput = document.getElementById("api-base-input");
   apiBaseInput.value = API_BASE;

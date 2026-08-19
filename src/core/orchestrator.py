@@ -51,6 +51,7 @@ class TripOrchestrator:
         serpapi_timeout: float = 60.0,
         email_timeout: float = 60.0,
         serpapi_api_key: str | None = None,
+        llm_model: str | None = None,
     ):
         self._store = store
         self._llm = llm_client
@@ -60,6 +61,7 @@ class TripOrchestrator:
         self._serpapi_timeout = serpapi_timeout
         self._email_timeout = email_timeout
         self._serpapi_api_key = serpapi_api_key
+        self._llm_model = llm_model
 
     async def _renew_lease(self) -> None:
         while True:
@@ -116,6 +118,7 @@ class TripOrchestrator:
             email_subject=email_content["subject"],
             email_body=body_text,
             package=package,
+            model=self._llm_model,
         )
 
     async def _send_email(self, trip: TripResponse, email_content: dict, body_text: str, body_html: str) -> None:

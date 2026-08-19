@@ -4,7 +4,7 @@ from src.api.dependencies import get_arq, get_database, get_trip_store
 from src.api.errors import APIError, ErrorCode
 from src.infrastructure.queue import enqueue_trip
 from src.core.schemas import FeedbackRequest, FeedbackResponse, TripCreateRequest, TripResponse, now_iso
-from src.api.security import build_rate_limiter, rate_limit_key, require_api_token
+from src.api.security import RateLimiter, build_rate_limiter, rate_limit_key, require_api_token
 from src.services.trip_store import TripNotFoundError, TripStore
 
 router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
@@ -22,9 +22,25 @@ async def create_trip(
     request: Request,
     response: Response,
     store: TripStore = Depends(get_trip_store),
+    db=Depends(get_database),
     arq=Depends(get_arq),
     _auth: None = Depends(require_api_token),
 ):
+    if not await db.is_whitelisted(payload.email):
+        raise APIError(
+            ErrorCode.NOT_WHITELISTED,
+            "Email not whitelisted. Request access via the project owners.",
+            403,
+        )
+
+    settings = request.app.state.settings
+    daily = RateLimiter(
+        request.app.state.redis,
+        max_requests=settings.whitelist_daily_max,
+        window_seconds=24 * 60 * 60,
+    )
+    await daily.check(f"email:{payload.email.lower()}:{now_iso()[:10]}")
+
     limiter = build_rate_limiter(request)
     await limiter.check(rate_limit_key(request))
 

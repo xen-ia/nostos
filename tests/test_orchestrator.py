@@ -70,6 +70,33 @@ async def test_happy_path_sends_email_and_saves_history(monkeypatch):
     assert await store.claim(trip.id, ttl_seconds=300) is True
 
 
+async def test_happy_path_saves_model_in_history(monkeypatch):
+    store = make_store()
+    trip = await store.create(make_trip())
+    llm = _make_llm()
+    email = FakeEmailSender()
+    db = FakeDatabase()
+
+    async def one(*args, **kwargs):
+        return [{"airline": "ANA", "from": "MXP", "to": "HND", "departure_date": "2026-09-01", "price_eur": 320, "link": "https://example.com/flight"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", one)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", one)
+    monkeypatch.setattr("src.core.orchestrator.places.search", one)
+
+    orchestrator = TripOrchestrator(
+        store=store,
+        llm_client=llm,
+        email_sender=email,
+        database=db,
+        trip_id=trip.id,
+        llm_model="qwen3:30b-a3b-instruct-2507-q4_K_M",
+    )
+    await _run(orchestrator)
+
+    assert db.saved[0]["model"] == "qwen3:30b-a3b-instruct-2507-q4_K_M"
+
+
 async def test_all_searches_empty_aborts_without_email(monkeypatch):
     store = make_store()
     trip = await store.create(make_trip())

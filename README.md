@@ -114,25 +114,6 @@ Flow (in the background after `POST /trips`): form → `TripStore` (Redis) → i
 - **Resend** — transactional email sending (`EmailSender`), configurable timeout.
 - **Prompts (`system_prompt.md`)** — Xen-IA editorial voice, the single source of rules; per-task prompts only bring in the data context.
 
-## Deploy (Railway)
-
-The repo ships a production Dockerfile (`Dockerfile`, non-root, uv-built). Railway is the
-simplest target: it provisions Postgres and Redis as managed addons and deploys from GitHub.
-
-1. **Provision infra** (Railway dashboard): create a Postgres addon and a Redis addon.
-2. **Deploy the app**: connect the repo, Railway builds the Dockerfile automatically.
-   Apply the schema once: `psql "$RAILWAY_POSTGRES_URL" < schema.sql` (no migration tooling yet).
-3. **Set env vars** on the app service (from `.env.example`, all `NOSTOS_` prefixed):
-   `NOSTOS_REDIS_URL`, `NOSTOS_POSTGRES_URL`, `NOSTOS_ANTHROPIC_API_KEY`,
-   `NOSTOS_SERPAPI_KEY`, `NOSTOS_RESEND_API_KEY`, `NOSTOS_API_TOKEN`,
-   `NOSTOS_ALLOWED_ORIGINS` (JSON list of frontend origins).
-4. **Add a second service** for the worker: same repo/build, but the start command is
-   `python -m src.infrastructure.worker`. It shares the same env vars.
-5. **Health checks**: Railway uses `/healthz` (liveness) and `/readyz` (readiness;
-   200 only when Redis and Postgres respond). `/metrics` exposes Prometheus counters.
-
-The API and worker are two services running the same image — no extra orchestration.
-
 ## Deploy (self-hosted VM — Oracle Cloud Free Tier)
 
 Same Dockerfile, run on any ARM64/x86_64 VM with Docker. The full stack runs
@@ -154,21 +135,20 @@ inside one Compose project — no managed addons needed.
 4. **Deploy**: `./scripts/deploy.sh` — builds the images, starts Postgres +
    Redis, applies `schema.sql` (idempotent), then starts `web` + `worker`.
    Containers restart automatically (`restart: unless-stopped`).
-5. **HTTPS**: point `xen-ia.nostos.dev` at the VM IP with a Cloudflare proxy
+5. **HTTPS**: point `nostos.xen-ia.org` at the VM IP with a Cloudflare proxy
    (orange cloud) A record — Cloudflare terminates TLS and talks plain HTTP to
    the origin on port 80, so no certificate management. `/healthz` (liveness)
    and `/readyz` (readiness) are exposed.
-6. **Resend**: add `xen-ia.nostos.dev` as the sending domain in Resend and add
+6. **Resend**: add `nostos.xen-ia.org` as the sending domain in Resend and add
    its TXT/SPF/DKIM records in Cloudflare DNS (the app host doubles as the
    sending domain, so no extra subdomain to manage; Resend is send-only, so no
    MX record is required). Set
-   `NOSTOS_EMAIL_FROM_ADDRESS="Nostos <hello@xen-ia.nostos.dev>"`.
+   `NOSTOS_EMAIL_FROM_ADDRESS="Nostos <hello@nostos.xen-ia.org>"`.
 7. **Keep-alive**: Always Free VMs are reclaimed when idle (7 days below ~20%
    CPU/network/memory). A cron hitting `/healthz` every minute avoids this:
 
    ```
-   * * * * * curl -fsS https://xen-ia.nostos.dev/healthz >/dev/null 2>&1 || true
+   * * * * * curl -fsS https://nostos.xen-ia.org/healthz >/dev/null 2>&1 || true
    ```
 
-Updating is `git pull && ./scripts/deploy.sh`. The stack is the same image the
-Railway path uses, so switching platforms later is just a matter of the host.
+Updating is `git pull && ./scripts/deploy.sh`.

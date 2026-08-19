@@ -18,7 +18,7 @@ class FakeArq:
         self.enqueued.append((function, list(args), kwargs))
 
 
-def make_app(store=None, arq=None, api_token: str = "", rate_limit_max: int = 10, window: int = 60, db=None):
+def make_app(store=None, arq=None, api_token: str = "", rate_limit_max: int = 10, window: int = 60, db=None, whitelist_daily_max: int = 5):
     store = store or make_store()
     arq = arq or FakeArq()
     llm = FakeLLM(response=INTENT, email_response=EMAIL)
@@ -35,6 +35,7 @@ def make_app(store=None, arq=None, api_token: str = "", rate_limit_max: int = 10
         api_token=api_token,
         rate_limit_max=rate_limit_max,
         rate_limit_window_seconds=window,
+        whitelist_daily_max=whitelist_daily_max,
     )
 
     app.include_router(trips_router.router)
@@ -87,7 +88,7 @@ def test_create_trip_invalid_travelers():
         resp = client.post("/api/v1/trips", json={"email": "test@example.com", "travelers_count": 0})
     assert resp.status_code == 422
     body = resp.json()
-    assert body["type"] == "https://nostos.dev/problems/validation_error"
+    assert body["type"] == "https://xen-ia.org/problems/validation_error"
     assert body["request_id"]
 
 
@@ -139,6 +140,57 @@ def test_auth_required_when_token_configured():
             headers=auth_headers("sekret"),
         )
         assert ok.status_code == 202
+
+
+def test_whitelist_denies_unlisted_email():
+    db = FakeDatabase(whitelist={"test@example.com"})
+    app, *_ = make_app(db=db)
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/trips", json={"email": "other@example.com", "destination": "Tokyo"})
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["type"].endswith("/not_whitelisted")
+    assert body["request_id"]
+
+
+def test_whitelist_allows_listed_email():
+    db = FakeDatabase(whitelist={"test@example.com"})
+    app, *_ = make_app(db=db)
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Tokyo"})
+    assert resp.status_code == 202
+
+
+def test_whitelist_empty_denies_all():
+    db = FakeDatabase(whitelist=set())
+    app, *_ = make_app(db=db)
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/trips", json={"email": "test@example.com"})
+    assert resp.status_code == 403
+    assert resp.json()["type"].endswith("/not_whitelisted")
+
+
+def test_whitelist_daily_limit_per_email():
+    db = FakeDatabase(whitelist={"test@example.com"})
+    app, *_ = make_app(db=db, whitelist_daily_max=2)
+    with TestClient(app) as client:
+        r1 = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Tokyo"})
+        r2 = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Osaka"})
+        r3 = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Kyoto"})
+    assert r1.status_code == 202
+    assert r2.status_code == 202
+    assert r3.status_code == 429
+    assert r3.json()["type"].endswith("/rate_limited")
+
+
+def test_whitelist_daily_limit_separate_per_email():
+    db = FakeDatabase(whitelist={"a@example.com", "b@example.com"})
+    app, *_ = make_app(db=db, whitelist_daily_max=1)
+    with TestClient(app) as client:
+        a1 = client.post("/api/v1/trips", json={"email": "a@example.com", "destination": "Tokyo"})
+        b1 = client.post("/api/v1/trips", json={"email": "b@example.com", "destination": "Osaka"})
+    assert a1.status_code == 202
+    assert b1.status_code == 202
 
 
 def test_rate_limit_exceeded():
