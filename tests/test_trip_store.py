@@ -23,6 +23,24 @@ async def test_create_get_roundtrip():
     assert got.status == TripStatus.PENDING
 
 
+async def test_create_get_roundtrip_structured_inputs():
+    store = make_store()
+    trip = await store.create(
+        make_trip(
+            travelers_composition="3 adulti, 2 bambini (6 e 9 anni)",
+            budget_amount="max 1500 EUR a persona",
+            travel_mode="van",
+            stay_preference="agriturismo",
+        )
+    )
+    got = await store.get(trip.id)
+
+    assert got.travelers_composition == "3 adulti, 2 bambini (6 e 9 anni)"
+    assert got.budget_amount == "max 1500 EUR a persona"
+    assert got.travel_mode == "van"
+    assert got.stay_preference == "agriturismo"
+
+
 async def test_get_missing_raises():
     store = make_store()
     with pytest.raises(TripNotFoundError):

@@ -35,6 +35,10 @@ class TripStore:
             "budget_range": payload.budget_range or "",
             "departure_location": payload.departure_location or "",
             "free_text": payload.free_text,
+            "travelers_composition": payload.travelers_composition or "",
+            "budget_amount": payload.budget_amount or "",
+            "travel_mode": payload.travel_mode or "",
+            "stay_preference": payload.stay_preference or "",
             "received_at": received_at,
         }
         key = self._key(trip_id)
@@ -93,4 +97,8 @@ class TripStore:
             free_text=data.get("free_text", ""),
             received_at=data.get("received_at", ""),
             result=data.get("result") or None,
+            travelers_composition=data.get("travelers_composition") or None,
+            budget_amount=data.get("budget_amount") or None,
+            travel_mode=data.get("travel_mode") or None,
+            stay_preference=data.get("stay_preference") or None,
         )

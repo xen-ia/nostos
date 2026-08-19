@@ -58,6 +58,10 @@ def test_frontend_payload_round_trips_through_api():
         "budget_range": "medio",
         "departure_location": "Bari",
         "free_text": "vogliamo il mare e buon cibo",
+        "travelers_composition": "2 adulti",
+        "budget_amount": "max 1500 EUR",
+        "travel_mode": "van",
+        "stay_preference": "agriturismo",
     }
     with TestClient(app) as client:
         resp = client.post("/api/v1/trips", json=payload)
