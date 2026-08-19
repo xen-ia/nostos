@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     rate_limit_max: int = 10
     rate_limit_window_seconds: int = 60
     idempotency_ttl_seconds: int = 60 * 60 * 24
+    whitelist_daily_max: int = 5
 
     # LLMs
     llm_provider: str = "claude"

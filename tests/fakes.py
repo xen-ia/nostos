@@ -48,11 +48,13 @@ class FakeEmailSender:
 
 
 class FakeDatabase(Database):
-    def __init__(self):
+    def __init__(self, whitelist: set[str] | None = None):
+        """whitelist=None means allow-all (for tests not exercising the gate)."""
         self.saved: list[dict] = []
         self.status: dict[str, str] = {}
         self.feedback: tuple | None = None
         self.error: Exception | None = None
+        self.whitelist = whitelist
 
     async def save_trip_history(self, **kwargs) -> None:
         if self.error is not None:
@@ -64,6 +66,11 @@ class FakeDatabase(Database):
 
     async def save_feedback(self, trip_id: str, rating: int, comment: str | None) -> None:
         self.feedback = (trip_id, rating, comment)
+
+    async def is_whitelisted(self, email: str) -> bool:
+        if self.whitelist is None:
+            return True
+        return email in self.whitelist
 
 
 def make_trip(**overrides) -> TripResponse:
