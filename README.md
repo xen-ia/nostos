@@ -5,8 +5,10 @@ nostos/
 ├── main.py                    # shim: uv run main.py → src/api/main.py
 ├── schema.sql
 ├── Dockerfile
+├── scripts/
+│   └── deploy.sh              # build + schema + start (web + worker + pgweb)
 ├── docs/
-│   └── index.html
+│   └── index.html             # frontend (gh-pages)
 └── src/
     ├── api/                   # web layer (FastAPI)
     │   ├── main.py
@@ -19,17 +21,19 @@ nostos/
     │   ├── orchestrator.py
     │   ├── models.py
     │   ├── schemas.py
-    │   └── prompts/
+    │   └── prompts/           # system_prompt.md (editorial voice)
     ├── services/              # external integrations
     │   ├── apis/              # llm, email, serpapi
     │   ├── tools/             # flights, maps, places
-    │   ├── templates/
+    │   ├── templates/         # email.html, trip template (md/docx)
     │   └── trip_store.py
-    ├── infrastructure/        # storage + queue
+    ├── infrastructure/        # storage + queue + worker
     │   ├── database.py
     │   ├── jobs.py
     │   ├── worker.py
-    │   └── queue.py
+    │   ├── queue.py
+    │   └── version.py         # app version from pyproject.toml
+    ├── knowledge/             # curated per-destination briefs for the LLM
     ├── settings.py
     └── logging.py
 ```
