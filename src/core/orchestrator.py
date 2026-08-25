@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from src.services.apis.llm import LLMClient
 from src.services.trip_store import TripResponse, TripStatus, TripStore
@@ -16,10 +16,22 @@ from src.services.apis.email import (
     build_html_email,
 )
 from src.infrastructure.database import Database
-from src.core.models import EmailContent, TripIntent
-from src.core.prompts import build_email_prompt, build_intent_prompt
+from src.core.models import Curation, EmailContent, PeriodPlan, TargetQueries, TripIntent
+from src.core.prompts import (
+    build_curation_prompt,
+    build_email_prompt,
+    build_intent_prompt,
+    build_period_prompt,
+    build_target_prompt,
+)
+from src.core.validation import build_allowed_resources, sanitize_windows, validate_resources
+from src.services.tools import dedupe_cap, flights, maps, places
 
 logger = logging.getLogger("nostos.orchestrator")
+
+MAX_WINDOWS = 2
+MAX_TARGET_QUERIES = 4
+CORPUS_CAP = 8
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
@@ -86,8 +98,17 @@ class TripOrchestrator:
             intent = await self._extract_intent(trip)
             logger.info("intent extracted for trip %s", self._trip_id)
 
-            async with self._timed("compose_package"):
-                email_content, body_text, body_html, package = await self._compose_package(trip, intent)
+            async with self._timed("research"):
+                windows = await self._plan_period(trip, intent)
+                tool_calls: list[dict] = []
+                anchors = await self._explore(intent.destination or trip.destination, tool_calls)
+                targeted = await self._target(trip, intent, anchors)
+                research = await self._execute_searches(trip, intent, targeted, windows, anchors, tool_calls)
+
+            async with self._timed("curate+compose"):
+                curated = await self._curate(trip, intent, research["corpus"])
+                research["curated"] = curated
+                email_content, body_text, body_html, package = await self._compose_email(trip, intent, research)
 
             async with self._timed("save_history"):
                 await self._save_history(trip, email_content, body_text, package)
@@ -123,7 +144,6 @@ class TripOrchestrator:
             destination=trip.destination,
             start_date=trip.start_date,
             end_date=trip.end_date,
-            flexible_dates=trip.flexible_dates,
             travelers_count=trip.travelers_count,
             travelers_type=trip.travelers_type,
             budget_range=trip.budget_range,
@@ -147,7 +167,7 @@ class TripOrchestrator:
 
     @staticmethod
     def _compose_body_text(email_content: dict) -> str:
-        lines = [email_content["opening"], "", email_content["understanding"], "", "Ecco tre punti di partenza concreti:"]
+        lines = [email_content["opening"], "", email_content["understanding"], "", "Ecco i punti di partenza:"]
         for i, item in enumerate(email_content["resources"], 1):
             parts = [f"{i}. {item['name']}"]
             if item.get("price"):
@@ -156,6 +176,16 @@ class TripOrchestrator:
                 parts.append(f"   {item['description']}")
             parts.append(f"   {item['link']}")
             lines.append("\n".join(parts))
+        appendix = email_content.get("appendix", {})
+        if appendix:
+            lines.append("")
+            lines.append("Fonti esplorate:")
+            for label, items in appendix.get("groups", []):
+                named = [i for i in items if i.get("link")]
+                if named:
+                    lines.append(f"{label}: " + "; ".join(f"{i.get('name') or i['link']} {i['link']}" for i in named))
+            for url in appendix.get("source_links", []):
+                lines.append(f"Ricerca voli: {url}")
         lines.append("")
         lines.append(email_content["cta"])
         lines.append("")
@@ -172,107 +202,255 @@ class TripOrchestrator:
         async with self._timed("extract_intent (LLM)"):
             return await self._llm.extract(prompt, TripIntent)
 
-    async def _compose_package(self, trip: TripResponse, intent: TripIntent) -> tuple[dict, str, str, dict]:
+    async def _plan_period(
+        self, trip: TripResponse, intent: TripIntent
+    ) -> list[tuple[str, str | None]]:
+        if trip.start_date and trip.end_date:
+            return [(trip.start_date, trip.end_date)]
+        if trip.start_date:
+            return [(trip.start_date, None)]
+        prompt = build_period_prompt(trip, intent, date.today().isoformat())
+        plan = await self._llm.extract(prompt, PeriodPlan)
+        windows = sanitize_windows([w.model_dump() for w in plan.windows], date.today())
+        logger.info("period plan: %d usable window(s)", len(windows))
+        return windows[:MAX_WINDOWS]
+
+    async def _explore(self, destination: str | None, tool_calls: list[dict]) -> list[dict]:
+        if not destination:
+            return []
+        query = f"quartieri e luoghi chiave in {destination}"
+        try:
+            anchors = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
+        except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
+            logger.warning("google_maps explore: error %s: %s", type(exc).__name__, exc)
+            return []
+        self._log_call(tool_calls, "google_maps", {"q": query}, anchors)
+        return anchors
+
+    async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict]) -> list[str]:
+        if not anchors:
+            return []
+        anchors_block = "\n".join(
+            f"- {a.get('name')} ({a.get('type')}) {a.get('address') or ''}".strip() for a in anchors[:CORPUS_CAP]
+        )
+        plan = await self._llm.extract(build_target_prompt(trip, intent, anchors_block), TargetQueries)
+        return [q.query for q in plan.queries][:MAX_TARGET_QUERIES]
+
+    def _log_call(self, tool_calls: list[dict], engine: str, params: dict, results: list[dict]) -> None:
+        tool_calls.append({"engine": engine, "params": params, "result_count": len(results)})
+        logger.info("%s: %d results (%s)", engine, len(results), params.get("q") or params.get("departure_id"))
+
+    async def _execute_searches(
+        self,
+        trip: TripResponse,
+        intent: TripIntent,
+        targeted_queries: list[str],
+        windows: list[tuple[str, str | None]],
+        anchors: list[dict],
+        tool_calls: list[dict],
+    ) -> dict:
         destination = intent.destination or trip.destination
         departure_code = intent.departure_airport_code or trip.departure_location
         destination_code = intent.destination_airport_code or destination
-        async with self._timed("serpapi (flights+maps+places)"):
-            results = await asyncio.gather(
-                flights.search(
-                    departure_code,
-                    destination_code,
-                    trip.start_date,
-                    trip.end_date,
-                    timeout=self._serpapi_timeout,
-                    api_key=self._serpapi_api_key,
-                ),
-                maps.research(destination, intent.interests, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-                places.search(
-                    destination,
-                    intent.interests,
-                    intent.style,
-                    trip.start_date,
-                    trip.end_date,
-                    timeout=self._serpapi_timeout,
-                    api_key=self._serpapi_api_key,
-                ),
-                return_exceptions=True,
-            )
-        flights_list, maps_list, places_list = (r if not isinstance(r, Exception) else [] for r in results)
+        errors: list[Exception] = []
 
-        errors = [r for r in results if isinstance(r, Exception)]
-        for label, result in (("flights", results[0]), ("pois", results[1]), ("stays", results[2])):
-            if isinstance(result, Exception):
-                logger.warning("%s: error %s: %s", label, type(result).__name__, result)
-            else:
-                logger.info("%s: %d results", label, len(result))
+        async def guarded(coro, engine: str, params: dict) -> list[dict]:
+            try:
+                res = await coro
+            except Exception as exc:  # noqa: BLE001 — mirrored from previous behavior
+                errors.append(exc)
+                logger.warning("%s: error %s: %s", engine, type(exc).__name__, exc)
+                return []
+            self._log_call(tool_calls, engine, params, res)
+            return res
 
-        if not flights_list and not maps_list and not places_list:
+        maps_results = await asyncio.gather(*(
+            guarded(maps.research(q, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+                    "google_maps", {"q": q})
+            for q in targeted_queries
+        ))
+
+        async def probe(window: tuple[str, str | None]):
+            params = {"departure_id": departure_code, "arrival_id": destination_code,
+                      "outbound_date": window[0], "return_date": window[1]}
+            res = await guarded(flights.search(departure_code, destination_code, window[0], window[1],
+                                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+                                "google_flights", params)
+            return window, res
+
+        probed = await asyncio.gather(*(probe(w) for w in windows))
+        candidates = [(w, f) for w, fs in probed for f in fs]
+        sources: list[str] = []
+        for _, f in candidates:
+            url = f.get("link")
+            if url and url not in sources:
+                sources.append(url)
+
+        best = min(
+            candidates,
+            key=lambda wf: wf[1].get("price_eur") if wf[1].get("price_eur") is not None else float("inf"),
+            default=None,
+        )
+        flights_list = [best[1]] if best else []
+        winning_window = best[0] if best else windows[0]
+
+        check_in = trip.start_date or winning_window[0]
+        check_out = trip.end_date or winning_window[1]
+        stays = await guarded(
+            places.search(destination=destination, check_in_date=check_in, check_out_date=check_out,
+                          timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+            "google_hotels", {"q": f"hotels in {destination}", "check_in_date": check_in, "check_out_date": check_out},
+        )
+
+        corpus = {
+            "flights": [{k: v for k, v in f.items() if k != "_meta"} for f in flights_list],
+            "maps": dedupe_cap([*anchors, *(i for lst in maps_results for i in lst)], cap=CORPUS_CAP),
+            "places": stays,
+        }
+        if not any(corpus.values()):
             if errors:
-                raise NoResourcesError(
-                    "No resources retrieved from SerpAPI (all searches failed): "
-                    "email not sent"
-                )
+                raise NoResourcesError("No resources retrieved from SerpAPI (all searches failed): email not sent")
             logger.warning(
                 "trip %s: no SerpAPI resources (flights=%d, pois=%d, stays=%d) — trip aborted without email",
                 self._trip_id,
-                len(flights_list),
-                len(maps_list),
-                len(places_list),
+                len(corpus["flights"]),
+                len(corpus["maps"]),
+                len(corpus["places"]),
             )
-            raise NoResourcesError(
-                "No resources retrieved from SerpAPI (all searches empty): "
-                "email not sent"
-            )
+            raise NoResourcesError("No resources retrieved from SerpAPI (all searches empty): email not sent")
+        return {"corpus": corpus, "tool_calls": tool_calls, "sources": sources, "winning_window": winning_window}
 
+    @staticmethod
+    def _render_numbered(items: list[dict], prefix: str) -> str:
+        if not items:
+            return "none available"
+        return "\n".join(f"[{prefix}{i}] {it.get('name')} — {it.get('link')}" for i, it in enumerate(items))
+
+    async def _curate(self, trip: TripResponse, intent: TripIntent, corpus: dict) -> dict:
+        blocks = (
+            f"Flights:\n{self._render_numbered(corpus['flights'], 'F')}\n\n"
+            f"Points of interest:\n{self._render_numbered(corpus['maps'], 'M')}\n\n"
+            f"Accommodation:\n{self._render_numbered(corpus['places'], 'P')}"
+        )
+        cur = await self._llm.extract(build_curation_prompt(trip, intent, blocks), Curation)
+
+        def pick(indices: list[int], items: list[dict]) -> list[dict]:
+            out = []
+            for idx in indices:
+                if 0 <= idx < len(items):
+                    out.append(items[idx])
+                else:
+                    logger.warning("curation index %d out of range (0..%d) — dropped", idx, len(items) - 1)
+            return out[:3]
+
+        curated = {
+            "flights": pick(cur.flight_indices, corpus["flights"]),
+            "maps": pick(cur.poi_indices, corpus["maps"]),
+            "places": pick(cur.stay_indices, corpus["places"]),
+        }
+        if not any(curated.values()):
+            # merit fallback: keep corpus top items rather than aborting a researched trip
+            curated = {k: v[:3] for k, v in corpus.items()}
+        return curated
+
+    async def _compose_email(
+        self, trip: TripResponse, intent: TripIntent, research: dict
+    ) -> tuple[dict, str, str, dict]:
+        corpus, curated = research["corpus"], research["curated"]
+        allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
+
+        prompt = build_email_prompt(intent,
+                                    self._render_flights(curated["flights"], numbered=True),
+                                    self._render_maps(curated["maps"], numbered=True),
+                                    self._render_places(curated["places"], numbered=True),
+                                    trip)
+        content = (await self._llm.extract(prompt, EmailContent)).model_dump()
+
+        report = validate_resources(content["resources"], allowed)
+        if report.invalid or not content["resources"]:
+            logger.warning("invalid resources dropped: %s", [r.get("name") for r in report.invalid])
+            content["resources"] = report.valid
+            if not content["resources"]:
+                retry_prompt = prompt + "\n\nIMPORTANT: your previous answer cited resources not in the list and was rejected. Use ONLY the listed resources."
+                content = (await self._llm.extract(retry_prompt, EmailContent)).model_dump()
+                report = validate_resources(content["resources"], allowed)
+                content["resources"] = report.valid
+                if not content["resources"]:
+                    raise NoResourcesError("email composition could not ground any real resource")
+
+        content["honest_note"] = HONEST_NOTE
+        content["cta"] = CTA
+        content["sections_map"] = {
+            "flights": [r["link"] for r in curated["flights"] if r.get("link")],
+            "places": [r["link"] for r in curated["places"] if r.get("link")],
+            "maps": [r["link"] for r in curated["maps"] if r.get("link")],
+        }
+        content["appendix"] = self._build_appendix(research)
+        body_text = self._compose_body_text(content)
+        body_html = build_html_email(content)
         package = {
             "intent": intent.model_dump(),
-            "flights": flights_list[:3],
-            "maps": maps_list[:3],
-            "places": places_list[:3],
+            "corpus": corpus,
+            "curated": curated,
+            "tool_calls": research["tool_calls"],
+        }
+        return content, body_text, body_html, package
+
+    @staticmethod
+    def _build_appendix(research: dict) -> dict:
+        corpus = research["corpus"]
+
+        def brief_items(items: list[dict]) -> list[dict]:
+            return [
+                {"name": it.get("name") or it.get("airline"), "link": it.get("link")}
+                for it in items
+            ]
+
+        return {
+            "groups": [
+                ("Voli", brief_items(corpus["flights"])),
+                ("Dove stare", brief_items(corpus["places"])),
+                ("Cosa fare", brief_items(corpus["maps"])),
+            ],
+            "source_links": research.get("sources", []),
         }
 
-        prompt = build_email_prompt(
-            intent,
-            self._render_flights(flights_list),
-            self._render_maps(maps_list),
-            self._render_places(places_list),
-            trip,
-        )
-        async with self._timed("compose_email (LLM)"):
-            content = await self._llm.extract(prompt, EmailContent)
-        email_content = content.model_dump()
-        email_content["honest_note"] = HONEST_NOTE
-        email_content["cta"] = CTA
-
-        body_text = self._compose_body_text(email_content)
-        body_html = build_html_email(email_content)
-        return email_content, body_text, body_html, package
-
     @staticmethod
-    def _render_flights(items: list[dict]) -> str:
+    def _render_flights(items: list[dict], numbered: bool = False) -> str:
         if not items:
             return "no flights available"
+
+        def label(i: int) -> str:
+            return f"[F{i}] " if numbered else ""
+
         return "\n".join(
-            f"{i}. {it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
+            f"{label(i)}{it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
             f"departure {it.get('departure_date')}, {it.get('price_eur')} EUR — {it.get('link')}"
-            for i, it in enumerate(items, 1)
+            for i, it in enumerate(items)
         )
 
     @staticmethod
-    def _render_maps(items: list[dict]) -> str:
+    def _render_maps(items: list[dict], numbered: bool = False) -> str:
         if not items:
             return "no points of interest"
+
+        def label(i: int) -> str:
+            return f"[M{i}] " if numbered else ""
+
         return "\n".join(
-            f"{i}. {it.get('name')} ({it.get('type')}, {it.get('rating')} stars) — {it.get('link')}"
-            for i, it in enumerate(items, 1)
+            f"{label(i)}{it.get('name')} ({it.get('type')}, {it.get('rating')} stars) — {it.get('link')}"
+            for i, it in enumerate(items)
         )
 
     @staticmethod
-    def _render_places(items: list[dict]) -> str:
+    def _render_places(items: list[dict], numbered: bool = False) -> str:
         if not items:
             return "no accommodations available"
+
+        def label(i: int) -> str:
+            return f"[P{i}] " if numbered else ""
+
         return "\n".join(
-            f"{i}. {it.get('name')} — {it.get('price_per_night_eur')} EUR/night — {it.get('link')}"
-            for i, it in enumerate(items, 1)
+            f"{label(i)}{it.get('name')} — {it.get('price_per_night_eur')} EUR/night — {it.get('link')}"
+            for i, it in enumerate(items)
         )

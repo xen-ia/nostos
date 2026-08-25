@@ -1,5 +1,7 @@
 import fakeredis.aioredis
 
+from pydantic import BaseModel
+
 from src.services.apis.llm import LLMClient
 from src.infrastructure.database import Database
 from src.core.schemas import TripCreateRequest, TripResponse
@@ -15,24 +17,38 @@ def make_store(ttl_seconds: int = 86400) -> TripStore:
 
 
 class FakeLLM(LLMClient):
-    """Deterministic in-memory LLM with configurable responses."""
+    """Deterministic in-memory LLM with configurable per-model responses."""
 
-    def __init__(self, response=None, email_response=None, error: Exception | None = None):
+    def __init__(self, response=None, email_response=None, error: Exception | None = None,
+                 responses: dict[type, BaseModel] | None = None,
+                 email_responses: list[BaseModel] | None = None):
         self._response = response
         self._email_response = email_response or response
         self._error = error
+        self._responses = responses or {}
+        self._email_responses = list(email_responses) if email_responses else []
         self.calls: list[tuple[str, type]] = []
 
     async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
-        from src.core.models import EmailContent, TripIntent
+        from src.core.models import Curation, EmailContent, PeriodPlan, TargetQueries, TripIntent
 
         self.calls.append((prompt, model))
         if self._error is not None:
             raise self._error
+        if model in self._responses:
+            return self._responses[model]
         if model is EmailContent:
+            if self._email_responses:
+                return self._email_responses.pop(0)
             return self._email_response
         if model is TripIntent:
             return self._response
+        if model is PeriodPlan:
+            return PeriodPlan(windows=[])
+        if model is TargetQueries:
+            return TargetQueries(queries=[])
+        if model is Curation:
+            return Curation(flight_indices=[0, 1, 2], poi_indices=[0, 1, 2], stay_indices=[0, 1, 2])
         return self._response
 
 
@@ -80,9 +96,8 @@ def make_trip(**overrides) -> TripResponse:
         email="test@example.com",
         destination="Tokyo",
         start_date="2026-09-01",
-        end_date="2026-09-10",
-        flexible_dates=True,
-        travelers_count=2,
+    end_date="2026-09-10",
+    travelers_count=2,
         travelers_type="coppia",
         budget_range="medio",
         departure_location="MXP",

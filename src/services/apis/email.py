@@ -64,12 +64,59 @@ def _render_card(item: dict) -> str:
     )
 
 
+_GROUP_HEADINGS = {"flights": "Voli", "places": "Dove stare", "maps": "Cosa fare"}
+
+
+def _render_group(label: str, items: list[dict]) -> str:
+    if not items:
+        return ""
+    head = f'<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#4E6071;margin:16px 0 8px;">{_e(label)}</div>'
+    return head + "\n".join(_render_card(item) for item in items)
+
+
+def _grouped_cards(content: dict) -> str:
+    smap = content.get("sections_map", {})
+    used: set[str] = set()
+    out = []
+    for kind, label in _GROUP_HEADINGS.items():
+        allow = set(smap.get(kind, []))
+        items = [r for r in content.get("resources", []) if r.get("link") in allow and r["link"] not in used]
+        for r in items:
+            used.add(r["link"])
+        out.append(_render_group(label, items))
+    leftovers = [r for r in content.get("resources", []) if r.get("link") not in used]
+    if leftovers:
+        out.append("\n".join(_render_card(r) for r in leftovers))  # unmatched singles render flat
+    return "\n".join(o for o in out if o)
+
+
+def _render_appendix(appendix: dict) -> str:
+    rows = []
+    for label, items in appendix.get("groups", []):
+        if not items:
+            continue
+        lis = "\n".join(
+            f'<li style="margin:2px 0;"><a href="{_e(i["link"])}" target="_blank" style="color:#4E6071;">{_e(i.get("name") or i["link"])}</a></li>'
+            for i in items if i.get("link")
+        )
+        rows.append(f'<div style="font-size:12px;color:#4E6071;margin-top:6px;">{_e(label)}</div><ul style="margin:4px 0 0;padding-left:18px;">{lis}</ul>')
+    src = "".join(f' <a href="{_e(u)}" target="_blank" style="color:#7A8895;">ricerca</a>' for u in appendix.get("source_links", []) if u)
+    if not rows and not src:
+        return ""
+    inner = "".join(rows) + (f'<div style="font-size:11px;color:#7A8895;margin-top:10px;">Ricerche effettuate:{src}</div>' if src else "")
+    return (
+        '<details style="margin-top:8px;"><summary style="cursor:pointer;font-family:\'IBM Plex Sans\',Arial,sans-serif;'
+        'font-size:12px;font-weight:600;color:#4E6071;">Tutto quello che abbiamo esplorato</summary>'
+        f'<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;">{inner}</div></details>'
+    )
+
+
 def build_html_email(content: dict) -> str:
-    resource_cards = "\n".join(_render_card(item) for item in content.get("resources", []))
     return load_email_template().safe_substitute(
         opening=_e(content["opening"]),
         understanding=_e(content["understanding"]),
-        resource_cards=resource_cards,
+        resource_groups=_grouped_cards(content),
+        appendix=_render_appendix(content.get("appendix", {})),
         cta=_e(content["cta"]),
         honest_note=_e(content["honest_note"]),
         signature_greeting=_e(SIGNATURE_GREETING),
