@@ -39,6 +39,7 @@ def test_frontend_posts_exactly_schema_fields():
     payload_keys = set(re.findall(r"^\s{6}(\w+):", block.group(1), re.MULTILINE))
 
     schema_fields = set(TripCreateRequest.model_fields.keys())
+
     assert payload_keys == schema_fields, (
         f"Frontend payload fields {payload_keys} != API schema fields {schema_fields}"
     )
@@ -54,10 +55,9 @@ def test_frontend_payload_round_trips_through_api():
         "end_date": "2026-08-27",
         "travelers_count": 2,
         "travelers_type": "coppia",
-        "budget_range": "medio",
         "departure_location": "Bari",
         "free_text": "vogliamo il mare e buon cibo",
-        "travelers_composition": "2 adulti",
+        "flexible_dates": True,
         "budget_amount": "max 1500 EUR",
         "travel_mode": "van",
         "stay_preference": "agriturismo",
@@ -69,28 +69,29 @@ def test_frontend_payload_round_trips_through_api():
     data = resp.json()
     assert data["destination"] == "Puglia"
     assert data["travelers_count"] == 2
+    assert data["flexible_dates"] is True
 
 
-def test_flexible_dates_field_rejected():
-    """flexible_dates was removed from the contract (ADR-007): the API must
-    reject it instead of silently ignoring it."""
+def test_removed_fields_rejected():
+    """budget_range (ADR-008) and travelers_composition (ADR-010) were removed
+    from the contract: the API must reject them instead of silently ignoring
+    them."""
     app, *_ = make_app()
-    payload = {
+    base_payload = {
         "email": "nome@esempio.com",
         "destination": "Puglia",
         "start_date": "2026-08-20",
         "end_date": "2026-08-27",
         "travelers_count": 2,
         "travelers_type": "coppia",
-        "budget_range": "medio",
         "departure_location": "Bari",
         "free_text": "vogliamo il mare e buon cibo",
-        "travelers_composition": "2 adulti",
         "budget_amount": "max 1500 EUR",
         "travel_mode": "van",
         "stay_preference": "agriturismo",
-        "flexible_dates": True,
     }
-    with TestClient(app) as client:
-        resp = client.post("/api/v1/trips", json=payload)
-    assert resp.status_code == 422
+    for removed_field, removed_value in (("travelers_composition", "2 adulti"), ("budget_range", "medio")):
+        payload = {**base_payload, removed_field: removed_value}
+        with TestClient(app) as client:
+            resp = client.post("/api/v1/trips", json=payload)
+        assert resp.status_code == 422, removed_field

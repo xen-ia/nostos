@@ -20,12 +20,11 @@ class TripCreateRequest(BaseModel):
     destination: Optional[str] = Field(default=None, max_length=200)
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    flexible_dates: bool = False
     travelers_count: int = Field(1, ge=1, le=20)
     travelers_type: Optional[Literal["solo", "coppia", "famiglia", "amici", "gruppo"]] = None
-    budget_range: Optional[Literal["economico", "medio", "alto", "no-limit"]] = None
     departure_location: Optional[str] = Field(default=None, max_length=200)
     free_text: str = Field(default="", max_length=5000)
-    travelers_composition: Optional[str] = Field(default=None, max_length=500)
     budget_amount: Optional[str] = Field(default=None, max_length=200)
     travel_mode: Optional[Literal["volo", "treno", "auto", "van", "indifferente"]] = None
     stay_preference: Optional[Literal["hotel", "b&b", "agriturismo", "glamping", "camping", "indifferente"]] = None

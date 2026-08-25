@@ -30,7 +30,15 @@ class FakeLLM(LLMClient):
         self.calls: list[tuple[str, type]] = []
 
     async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
-        from src.core.models import Curation, EmailContent, PeriodPlan, TargetQueries, TripIntent
+        from src.core.models import (
+            Curation,
+            DepartureAirports,
+            EmailContent,
+            PeriodPlan,
+            ResolvedDestinations,
+            TargetQueries,
+            TripIntent,
+        )
 
         self.calls.append((prompt, model))
         if self._error is not None:
@@ -49,6 +57,10 @@ class FakeLLM(LLMClient):
             return TargetQueries(queries=[])
         if model is Curation:
             return Curation(flight_indices=[0, 1, 2], poi_indices=[0, 1, 2], stay_indices=[0, 1, 2])
+        if model is ResolvedDestinations:
+            return ResolvedDestinations(destinations=[], rationale="")
+        if model is DepartureAirports:
+            return DepartureAirports(codes=[])
         return self._response
 
 
@@ -99,7 +111,6 @@ def make_trip(**overrides) -> TripResponse:
     end_date="2026-09-10",
     travelers_count=2,
         travelers_type="coppia",
-        budget_range="medio",
         departure_location="MXP",
         free_text="ci piace il cibo locale",
     )
