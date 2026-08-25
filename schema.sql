@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS trip_history (
     destination TEXT,
     start_date DATE,
     end_date DATE,
-    flexible_dates BOOLEAN NOT NULL DEFAULT FALSE,
     travelers_count INTEGER NOT NULL,
     travelers_type TEXT,
     budget_range TEXT,
@@ -82,6 +81,9 @@ ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS version TEXT;
 ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS send_datetime TIMESTAMPTZ;
 ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE trip_history ADD COLUMN IF NOT EXISTS duration_seconds REAL;
+
+-- Upgrade existing databases: flexible_dates removed (dates absent => system chooses window).
+ALTER TABLE trip_history DROP COLUMN IF EXISTS flexible_dates;
 
 -- Display timestamps in Italian local time; storage stays UTC (TIMESTAMPTZ).
 ALTER DATABASE nostos SET timezone TO 'Europe/Rome';

@@ -52,7 +52,6 @@ def test_frontend_payload_round_trips_through_api():
         "destination": "Puglia",
         "start_date": "2026-08-20",
         "end_date": "2026-08-27",
-        "flexible_dates": True,
         "travelers_count": 2,
         "travelers_type": "coppia",
         "budget_range": "medio",
@@ -70,3 +69,28 @@ def test_frontend_payload_round_trips_through_api():
     data = resp.json()
     assert data["destination"] == "Puglia"
     assert data["travelers_count"] == 2
+
+
+def test_flexible_dates_field_rejected():
+    """flexible_dates was removed from the contract (ADR-007): the API must
+    reject it instead of silently ignoring it."""
+    app, *_ = make_app()
+    payload = {
+        "email": "nome@esempio.com",
+        "destination": "Puglia",
+        "start_date": "2026-08-20",
+        "end_date": "2026-08-27",
+        "travelers_count": 2,
+        "travelers_type": "coppia",
+        "budget_range": "medio",
+        "departure_location": "Bari",
+        "free_text": "vogliamo il mare e buon cibo",
+        "travelers_composition": "2 adulti",
+        "budget_amount": "max 1500 EUR",
+        "travel_mode": "van",
+        "stay_preference": "agriturismo",
+        "flexible_dates": True,
+    }
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/trips", json=payload)
+    assert resp.status_code == 422

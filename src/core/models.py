@@ -71,3 +71,35 @@ class EmailContent(BaseModel):
             "Niente di inventato. Se i dati sono insufficienti, inserisci meno voci."
         )
     )
+
+
+class DateWindow(BaseModel):
+    start: str = Field(description="Inizio finestra candidata, ISO YYYY-MM-DD")
+    end: str = Field(description="Fine finestra candidata, ISO YYYY-MM-DD")
+    rationale: str = Field(default="", description="Perché questa finestra è adatta al viaggio")
+
+
+class PeriodPlan(BaseModel):
+    windows: list[DateWindow] = Field(
+        default_factory=list,
+        description="Massimo 2 finestre temporali candidate, entrambe nel futuro",
+    )
+
+
+class TargetQuery(BaseModel):
+    query: str = Field(description="Query di ricerca mirata, stessa lingua della destinazione")
+    based_on: str = Field(default="", description="Anchor dall'esplorazione da cui deriva la query")
+
+
+class TargetQueries(BaseModel):
+    queries: list[TargetQuery] = Field(
+        default_factory=list,
+        description="Massimo 4 query mirate, ognuna derivata da un anchor dell'esplorazione",
+    )
+
+
+class Curation(BaseModel):
+    flight_indices: list[int] = Field(default_factory=list, description="Indici dei voli selezionati")
+    poi_indices: list[int] = Field(default_factory=list, description="Indici dei POI selezionati")
+    stay_indices: list[int] = Field(default_factory=list, description="Indici degli alloggi selezionati")
+    rationale: str = Field(default="", description="Breve motivazione delle scelte, in italiano")

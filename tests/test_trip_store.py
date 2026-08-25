@@ -15,7 +15,6 @@ async def test_create_get_roundtrip():
     assert got.destination == "Tokyo"
     assert got.start_date == "2026-09-01"
     assert got.end_date == "2026-09-10"
-    assert got.flexible_dates is True
     assert got.travelers_count == 2
     assert got.travelers_type == "coppia"
     assert got.budget_range == "medio"

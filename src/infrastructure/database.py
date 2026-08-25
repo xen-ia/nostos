@@ -4,6 +4,23 @@ from datetime import date, datetime
 from uuid import UUID
 
 
+SAVE_TRIP_HISTORY_SQL = """
+INSERT INTO trip_history (
+    id, email, destination, start_date, end_date,
+    travelers_count, travelers_type, budget_range, departure_location,
+    free_text, email_subject, email_body, package_json, status, model, version
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)
+ON CONFLICT (id) DO UPDATE SET
+    email_subject = EXCLUDED.email_subject,
+    email_body = EXCLUDED.email_body,
+    package_json = EXCLUDED.package_json,
+    status = EXCLUDED.status,
+    model = EXCLUDED.model,
+    version = EXCLUDED.version
+"""
+
+
 class Database:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
@@ -15,7 +32,6 @@ class Database:
         destination: str | None,
         start_date: str | None,
         end_date: str | None,
-        flexible_dates: bool,
         travelers_count: int,
         travelers_type: str | None,
         budget_range: str | None,
@@ -29,27 +45,12 @@ class Database:
         version: str | None = None,
     ) -> None:
         await self._pool.execute(
-            """
-            INSERT INTO trip_history (
-                id, email, destination, start_date, end_date, flexible_dates,
-                travelers_count, travelers_type, budget_range, departure_location,
-                free_text, email_subject, email_body, package_json, status, model, version
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17)
-            ON CONFLICT (id) DO UPDATE SET
-                email_subject = EXCLUDED.email_subject,
-                email_body = EXCLUDED.email_body,
-                package_json = EXCLUDED.package_json,
-                status = EXCLUDED.status,
-                model = EXCLUDED.model,
-                version = EXCLUDED.version
-            """,
+            SAVE_TRIP_HISTORY_SQL,
             UUID(trip_id),
             email,
             destination,
             date.fromisoformat(start_date) if start_date else None,
             date.fromisoformat(end_date) if end_date else None,
-            flexible_dates,
             travelers_count,
             travelers_type,
             budget_range,

@@ -1,5 +1,4 @@
 """APIs for handling maps research"""
-from typing import Optional
 
 from src.services.apis.serpapi import search as serpapi_search
 
@@ -16,14 +15,10 @@ def _normalize(place: dict) -> dict:
     }
 
 
-async def research(destination: Optional[str], interests: list[str], timeout: float = 60.0, api_key: str | None = None) -> list[dict]:
-    """Searches points of interest on Google Maps via SerpAPI."""
-    if not destination:
+async def research(query: str, timeout: float = 60.0, api_key: str | None = None) -> list[dict]:
+    """Searches points of interest on Google Maps via SerpAPI for ONE query."""
+    if not query:
         return []
-
-    query = f"points of interest in {destination}"
-    if interests:
-        query = f"{interests[0]} in {destination}"
 
     data = await serpapi_search(
         {
@@ -37,4 +32,4 @@ async def research(destination: Optional[str], interests: list[str], timeout: fl
     )
 
     places = data.get("local_results", [])
-    return [_normalize(p) for p in places[:5]]
+    return [_normalize(p) for p in places]
