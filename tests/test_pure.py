@@ -115,23 +115,41 @@ def test_compose_body_text_formatting():
 
 def test_build_intent_prompt_includes_structured_inputs():
     trip = make_trip(
-        travelers_composition="3 adulti, 2 bambini (6 e 9 anni)",
         budget_amount="max 1500 EUR a persona",
         travel_mode="van",
         stay_preference="agriturismo",
     )
     prompt = build_intent_prompt(trip)
-    assert "3 adulti, 2 bambini (6 e 9 anni)" in prompt
     assert "max 1500 EUR a persona" in prompt
     assert "van" in prompt
     assert "agriturismo" in prompt
 
 
+def test_build_intent_prompt_includes_travelers_fields():
+    trip = make_trip(travelers_count=4, travelers_type="famiglia")
+    prompt = build_intent_prompt(trip)
+    assert "Travelers count: 4" in prompt
+    assert "Travelers type: famiglia" in prompt
+
+
+def test_build_intent_prompt_travelers_type_missing():
+    trip = make_trip(travelers_count=1, travelers_type=None)
+    prompt = build_intent_prompt(trip)
+    assert "Travelers type: not specified" in prompt
+
+
 def test_build_email_prompt_includes_structured_inputs():
-    trip = make_trip(travelers_composition="2 adulti", budget_amount="1000 EUR", travel_mode="treno", stay_preference="b&b")
+    trip = make_trip(budget_amount="1000 EUR", travel_mode="treno", stay_preference="b&b")
     intent = TripIntent(destination="Tokyo", interests=["cibo"])
     prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
-    assert "2 adulti" in prompt
     assert "1000 EUR" in prompt
     assert "treno" in prompt
     assert "b&b" in prompt
+
+
+def test_build_email_prompt_includes_travelers_fields():
+    trip = make_trip(travelers_count=4, travelers_type="amici")
+    intent = TripIntent(destination="Tokyo", interests=["cibo"])
+    prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
+    assert "Travelers count: 4" in prompt
+    assert "Travelers type: amici" in prompt

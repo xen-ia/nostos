@@ -29,6 +29,7 @@ async def search(
     destination: Optional[str],
     check_in_date: Optional[str] = None,
     check_out_date: Optional[str] = None,
+    query: Optional[str] = None,
     timeout: float = 60.0,
     api_key: str | None = None,
 ) -> list[dict]:
@@ -36,7 +37,7 @@ async def search(
     if not destination:
         return []
 
-    query = f"hotels in {destination}"
+    query = query or f"hotels in {destination}"
 
     check_in, check_out = check_in_date, check_out_date
     if not check_in or not check_out:

@@ -68,9 +68,10 @@ curl -s -X POST http://localhost:3072/api/v1/trips \
     "departure_location": "Italy",
     "start_date": "2027-07-30",
     "end_date": "2027-08-30",
+    "flexible_dates": false,
     "travelers_count": 2,
     "travelers_type": "coppia",
-    "budget_range": "medio",
+    "budget_amount": null,
     "free_text": "cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle. Vorrei fare una vacanza in road trip: noleggiare un van/jeep e dormire lungo il percorso"
   }'
 ```
@@ -86,7 +87,7 @@ curl -s -X POST http://localhost:3072/api/v1/trips \
     "end_date": null,
     "travelers_count": 1,
     "travelers_type": null,
-    "budget_range": "medio",
+    "budget_amount": null,
     "free_text": "Viaggi in barca, conoscere la cultura indigena locale. Poké, cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle."
   }'
 ```

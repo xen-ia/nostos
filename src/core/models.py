@@ -103,3 +103,21 @@ class Curation(BaseModel):
     poi_indices: list[int] = Field(default_factory=list, description="Indici dei POI selezionati")
     stay_indices: list[int] = Field(default_factory=list, description="Indici degli alloggi selezionati")
     rationale: str = Field(default="", description="Breve motivazione delle scelte, in italiano")
+
+
+class ResolvedPlace(BaseModel):
+    name: str = Field(description="Nome della meta concreta (isola, città)")
+    country: str = Field(default="", description="Paese/Territorio")
+    airport_code: Optional[str] = Field(default=None, description="Codice IATA principale della meta")
+
+
+class ResolvedDestinations(BaseModel):
+    destinations: list[ResolvedPlace] = Field(
+        default_factory=list,
+        description="Max 2 mete concrete; vuota se la destinazione era già specifica",
+    )
+    rationale: str = Field(default="", description="In italiano: perché queste mete per questo viaggiatore")
+
+
+class DepartureAirports(BaseModel):
+    codes: list[str] = Field(default_factory=list, description="1..4 codici IATA candidati di partenza")

@@ -547,6 +547,117 @@
   #status.is-error { color: #E0896E; }
   #status.is-done { color: #B4BE92; }
 
+  /* ---- form v2: Altro + date flessibili ---- */
+
+  .altro-input[hidden] { display: none; }
+  .altro-wrap { margin-top: -0.15rem; }
+
+  .flexible-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-top: 0.7rem;
+  }
+  .flexible-row[hidden] { display: none; }
+  .flexible-row input[type="checkbox"] {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--terracotta-deep);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .flexible-row label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--ink-text);
+    cursor: pointer;
+  }
+
+  /* ---- feedback widget ---- */
+
+  #feedback {
+    max-width: 640px;
+    margin: 1.25rem auto 0;
+    background:
+      radial-gradient(90% 60% at 50% -12%, rgba(233,205,152,0.5) 0%, transparent 70%),
+      linear-gradient(180deg, #FCF7E8 0%, #F4E9D0 100%);
+    border: 1px solid rgba(150,120,60,0.4);
+    border-radius: 14px;
+    padding: 1.25rem clamp(1rem, 3vw, 1.75rem) 1.5rem;
+    text-align: center;
+    animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  #feedback[hidden], #fb-thanks[hidden] { display: none; }
+
+  .fb-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 1.02rem;
+    color: var(--ink-text);
+    margin: 0 0 0.6rem;
+  }
+  .fb-stars {
+    display: flex;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+  .fb-star {
+    background: none;
+    border: none;
+    padding: 0.2rem;
+    font-size: 1.75rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #D8CBA8;
+    transition: transform 0.12s ease, color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .fb-star:hover { transform: scale(1.18); }
+  .fb-star:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+    border-radius: 6px;
+  }
+  .fb-star.active { color: var(--gold); }
+  .fb-comment { min-height: 60px; margin-top: 0.85rem; }
+  #fb-send {
+    margin-top: 0.85rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--parchment);
+    border: none;
+    padding: 0.6rem 1.6rem;
+    border-radius: 999px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #A84E28 0%, #8F4323 100%);
+    box-shadow: 0 8px 16px -8px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+  #fb-send:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+  #fb-send:disabled { opacity: 0.65; cursor: default; }
+  #fb-send:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.45);
+  }
+  .fb-error {
+    color: var(--terracotta-deep);
+    font-size: 0.8rem;
+    margin: 0.6rem 0 0;
+  }
+  .fb-error[hidden] { display: none; }
+
+  #fb-thanks {
+    max-width: 640px;
+    margin: 1.25rem auto 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-align: center;
+    color: var(--gold);
+    animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
   .foot {
     max-width: 640px;
     margin: 2.5rem auto 0;
@@ -638,11 +749,13 @@
   @media (prefers-reduced-motion: reduce) {
     .masthead, .hero h1, .hero p,
     .ticket, .chip, #status, .calendar, body::before,
+    #feedback, #fb-thanks,
     .compass-rings, .needle {
       animation: none !important;
     }
     button[type="submit"], button[type="submit"]::after,
-    button[type="submit"] svg, .chip, .date-trigger, .cal-nav { transition: none !important; }
+    button[type="submit"] svg, .chip, .date-trigger, .cal-nav,
+    .fb-star, #fb-send { transition: none !important; }
   }
 
   @media (max-width: 560px) {
@@ -733,6 +846,10 @@
             <button type="button" class="cal-clear" id="cal-clear">Cancella</button>
           </div>
         </div>
+        <div class="flexible-row" id="flexible-row" hidden>
+          <input type="checkbox" id="flexible_dates">
+          <label for="flexible_dates">Date flessibili (ottimizziamo sui costi)</label>
+        </div>
       </div>
 
       <div class="field">
@@ -753,28 +870,13 @@
         </div>
       </div>
 
-      <div class="field">
-        <label for="budget_range">Budget indicativo</label>
-        <select id="budget_range">
-          <option value="economico">Economico</option>
-          <option value="medio" selected>Medio</option>
-          <option value="alto">Alto</option>
-          <option value="no-limit">Nessun limite</option>
-        </select>
-      </div>
-
       <div class="field full">
         <label for="departure_location">Parti da</label>
         <input type="text" id="departure_location" placeholder="Es. Milano" autocomplete="off" enterkeyhint="next">
       </div>
 
       <div class="field full">
-        <label for="travelers_composition">Con chi viaggi? (facoltativo)</label>
-        <input type="text" id="travelers_composition" placeholder="Es. 3 adulti, 2 bambini (6 e 9 anni)" autocomplete="off" enterkeyhint="next">
-      </div>
-
-      <div class="field full">
-        <label for="budget_amount">Budget indicativo (facoltativo)</label>
+        <label for="budget_amount">Budget (facoltativo)</label>
         <input type="text" id="budget_amount" placeholder="Es. max 1500 EUR a persona" autocomplete="off" enterkeyhint="next">
       </div>
 
@@ -786,7 +888,9 @@
           <option value="treno">Treno</option>
           <option value="auto">Auto</option>
           <option value="van">Van / road trip</option>
+          <option value="">Altro…</option>
         </select>
+        <input type="text" class="altro-input" id="travel_mode_altro" placeholder="es. barca a vela…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica come preferisci muoverti">
       </div>
 
       <div class="field full">
@@ -798,7 +902,9 @@
           <option value="agriturismo">Agriturismo</option>
           <option value="glamping">Glamping</option>
           <option value="camping">Camping</option>
+          <option value="">Altro…</option>
         </select>
+        <input type="text" class="altro-input" id="stay_preference_altro" placeholder="es. monastero, rifugio…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica dove preferisci dormire">
       </div>
 
       <div class="field full">
@@ -863,6 +969,22 @@
   </form>
 
   <div id="status"></div>
+
+  <div id="feedback" hidden>
+    <p class="fb-title">Com'è andata? Lasciaci una valutazione</p>
+    <div class="fb-stars" role="group" aria-label="Voto da 1 a 5 stelle">
+      <button type="button" class="fb-star" data-rating="1" aria-label="1 stella">★</button>
+      <button type="button" class="fb-star" data-rating="2" aria-label="2 stelle">★</button>
+      <button type="button" class="fb-star" data-rating="3" aria-label="3 stelle">★</button>
+      <button type="button" class="fb-star" data-rating="4" aria-label="4 stelle">★</button>
+      <button type="button" class="fb-star" data-rating="5" aria-label="5 stelle">★</button>
+    </div>
+    <textarea id="fb-comment" class="fb-comment" placeholder="Un commento (facoltativo)" enterkeyhint="done"></textarea>
+    <br>
+    <button type="button" id="fb-send">Invia feedback</button>
+    <p class="fb-error" id="fb-error" hidden></p>
+  </div>
+  <div id="fb-thanks" hidden>Grazie del feedback!</div>
 
   <p class="foot">νόστος·ξενία — viaggi autentici, lontano dal turismo di massa.<br>
     Scritto con cura da <strong>Edoardo &amp; Chiara</strong>.</p>
@@ -1102,6 +1224,7 @@
       startInput.value = toKey(a);
       endInput.value = toKey(b);
     }
+    startInput.dispatchEvent(new Event("change"));
   }
 
   function updateLegend(){
@@ -1168,6 +1291,12 @@
     hoverDate = null;
     updateTrigger();
     closeCalendar();
+    ALTRO_FIELDS.forEach(({ select, input }) => {
+      select.value = select.options[0].value;
+      input.hidden = true;
+      input.value = "";
+    });
+    resetFeedbackUI();
   });
   
   document.querySelectorAll(".chip").forEach(chip => {
@@ -1183,27 +1312,188 @@
     });
   });
 
+  // ---- pattern "Altro": select con value "" rivela un input di testo ----
+  const travelModeSelect = document.getElementById("travel_mode");
+  const travelModeAltro = document.getElementById("travel_mode_altro");
+  const stayPrefSelect = document.getElementById("stay_preference");
+  const stayPrefAltro = document.getElementById("stay_preference_altro");
+
+  const ALTRO_FIELDS = [
+    { select: travelModeSelect, input: travelModeAltro },
+    { select: stayPrefSelect, input: stayPrefAltro },
+  ];
+  ALTRO_FIELDS.forEach(({ select, input }) => {
+    select.addEventListener("change", () => {
+      input.hidden = select.value !== "";
+      if (input.hidden) input.value = "";
+    });
+  });
+
+  // ---- date flessibili: visibile solo quando c'è una data di partenza ----
+  const flexibleRow = document.getElementById("flexible-row");
+  const flexibleCheck = document.getElementById("flexible_dates");
+  function updateFlexibleVisibility(){
+    flexibleRow.hidden = !startInput.value;
+    if (flexibleRow.hidden) flexibleCheck.checked = false;
+  }
+  startInput.addEventListener("change", updateFlexibleVisibility);
+
+  // ---- stato post-invio: poll dello stato del viaggio + feedback ----
+  const POLL_INTERVAL_MS = 3000;
+  const STATUS_COPY = {
+    pending: "Richiesta ricevuta, in coda…",
+    running: "Stiamo esplorando le mete…",
+  };
+
+  const feedbackEl = document.getElementById("feedback");
+  const fbStars = [...document.querySelectorAll(".fb-star")];
+  const fbComment = document.getElementById("fb-comment");
+  const fbSend = document.getElementById("fb-send");
+  const fbError = document.getElementById("fb-error");
+  const fbThanks = document.getElementById("fb-thanks");
+
+  let currentTripId = null;
+  let pollTimer = null;
+  let fbRating = 0;
+
+  function renderStatus(status){
+    statusEl.className = "";
+    statusEl.textContent = STATUS_COPY[status] || "Richiesta ricevuta, in coda…";
+  }
+
+  function stopPolling(){
+    if (pollTimer){ clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  function resetFeedbackUI(){
+    stopPolling();
+    currentTripId = null;
+    fbRating = 0;
+    feedbackEl.hidden = true;
+    fbThanks.hidden = true;
+    fbError.hidden = true;
+    fbComment.value = "";
+    fbSend.disabled = false;
+    fbStars.forEach(s => s.classList.remove("active"));
+  }
+
+  function onFinished(status, result){
+    stopPolling();
+    if (status === "done"){
+      statusEl.className = "is-done";
+      statusEl.textContent =
+        "Tutto pronto! Ti abbiamo scritto a " +
+        document.getElementById("email").value +
+        " con i primi spunti.";
+      feedbackEl.hidden = false;
+    } else {
+      statusEl.className = "is-error";
+      statusEl.textContent =
+        "Questa richiesta non è andata a buon fine. Riprova con una nuova richiesta.";
+    }
+  }
+
+  async function pollTrip(){
+    if (!currentTripId) return;
+    try {
+      const res = await fetch(`${API_BASE}/trips/${currentTripId}`);
+      if (!res.ok) throw new Error(`Errore server: ${res.status}.`);
+      const trip = await res.json();
+      if (trip.status === "pending" || trip.status === "running"){
+        renderStatus(trip.status);
+        pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
+      } else {
+        onFinished(trip.status, trip.result);
+      }
+    } catch (err) {
+      statusEl.className = "is-error";
+      statusEl.textContent = "Errore durante l'aggiornamento: " + err.message;
+    }
+  }
+
+  function startPolling(initialStatus){
+    stopPolling();
+    if (initialStatus === "done" || initialStatus === "error"){
+      onFinished(initialStatus);
+      return;
+    }
+    renderStatus(initialStatus);
+    pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
+  }
+
+  fbStars.forEach(star => star.addEventListener("click", () => {
+    fbRating = Number(star.dataset.rating);
+    fbStars.forEach(s => s.classList.toggle("active", Number(s.dataset.rating) <= fbRating));
+    fbError.hidden = true;
+  }));
+
+  fbSend.addEventListener("click", async () => {
+    if (!currentTripId){
+      fbError.textContent = "Nessuna richiesta da valutare.";
+      fbError.hidden = false;
+      return;
+    }
+    if (!fbRating){
+      fbError.textContent = "Scegli un voto da 1 a 5 stelle.";
+      fbError.hidden = false;
+      return;
+    }
+    fbSend.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/trips/${currentTripId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: fbRating, comment: fbComment.value.trim() || null }),
+      });
+      if (!res.ok){
+        throw new Error(res.status === 404 ? "viaggio non trovato." : `errore server ${res.status}.`);
+      }
+      feedbackEl.hidden = true;
+      fbThanks.hidden = false;
+    } catch (err) {
+      fbError.textContent = "Invio non riuscito: " + err.message + " Riprova.";
+      fbError.hidden = false;
+    } finally {
+      fbSend.disabled = false;
+    }
+  });
+
+  // Altro selezionato → il testo finisce in free_text, il campo strutturato è null
+  function resolveAltro(select, input, template){
+    if (select.value !== "") return { value: select.value, prose: null };
+    const text = input.value.trim();
+    return { value: null, prose: text ? template.replace("{text}", () => text) : null };
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    resetFeedbackUI();
     submitBtn.disabled = true;
     submitBtn.classList.add("is-loading");
     statusEl.className = "";
-    statusEl.textContent = "Sto preparando il tuo viaggio...";
+    statusEl.textContent = "Invio la richiesta...";
+
+    const mode = resolveAltro(travelModeSelect, travelModeAltro, "Come viaggia: {text}.");
+    const stay = resolveAltro(stayPrefSelect, stayPrefAltro, "Soggiorno: {text}.");
+    const altroProse = [mode.prose, stay.prose].filter(Boolean).join(" ");
+    const baseFreeText = freeText.value.trim();
+    const payloadFreeText = altroProse
+      ? (baseFreeText ? `${baseFreeText} ${altroProse}` : altroProse)
+      : baseFreeText;
 
     const payload = {
       email: document.getElementById("email").value,
       destination: document.getElementById("destination").value || null,
       start_date: document.getElementById("start_date").value || null,
       end_date: document.getElementById("end_date").value || null,
+      flexible_dates: flexibleCheck.checked,
       travelers_count: Number(document.getElementById("travelers_count").value) || 1,
       travelers_type: document.getElementById("travelers_type").value,
-      budget_range: document.getElementById("budget_range").value,
       departure_location: document.getElementById("departure_location").value || null,
-      free_text: freeText.value,
-      travelers_composition: document.getElementById("travelers_composition").value || null,
+      free_text: payloadFreeText,
       budget_amount: document.getElementById("budget_amount").value || null,
-      travel_mode: document.getElementById("travel_mode").value,
-      stay_preference: document.getElementById("stay_preference").value,
+      travel_mode: mode.value,
+      stay_preference: stay.value,
     };
 
     try {
@@ -1224,13 +1514,8 @@
         throw new Error(`Errore server: ${res.status}. Riprova tra un momento.`);
       }
       const data = await res.json();
-      const name = (document.getElementById("email").value || "").split("@")[0];
-      statusEl.className = "is-done";
-      statusEl.textContent =
-        "Tutto pronto, " + (name ? name + ", " : "") +
-        "il tuo viaggio sta partendo!\nTi scriveremo presto a " +
-        document.getElementById("email").value +
-        " con i primi spunti.";
+      currentTripId = data.id || null;
+      startPolling(data.status || "pending");
     } catch (err) {
       statusEl.className = "is-error";
       statusEl.textContent = "Errore: " + err.message;

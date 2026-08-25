@@ -74,12 +74,12 @@ def test_nullable_fields_default_none():
 def test_structured_inputs_accepted():
     trip = TripCreateRequest(
         email="a@b.com",
-        travelers_composition="3 adulti, 2 bambini (6 e 9 anni)",
+        flexible_dates=True,
         budget_amount="max 1500 EUR a persona",
         travel_mode="van",
         stay_preference="agriturismo",
     )
-    assert trip.travelers_composition == "3 adulti, 2 bambini (6 e 9 anni)"
+    assert trip.flexible_dates is True
     assert trip.budget_amount == "max 1500 EUR a persona"
     assert trip.travel_mode == "van"
     assert trip.stay_preference == "agriturismo"
@@ -87,7 +87,7 @@ def test_structured_inputs_accepted():
 
 def test_structured_inputs_default_none():
     trip = TripCreateRequest(email="a@b.com")
-    assert trip.travelers_composition is None
+    assert trip.flexible_dates is False
     assert trip.budget_amount is None
     assert trip.travel_mode is None
     assert trip.stay_preference is None

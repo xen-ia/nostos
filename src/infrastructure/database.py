@@ -7,7 +7,8 @@ from uuid import UUID
 SAVE_TRIP_HISTORY_SQL = """
 INSERT INTO trip_history (
     id, email, destination, start_date, end_date,
-    travelers_count, travelers_type, budget_range, departure_location,
+    flexible_dates,
+    travelers_count, travelers_type, departure_location,
     free_text, email_subject, email_body, package_json, status, model, version
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)
@@ -32,9 +33,9 @@ class Database:
         destination: str | None,
         start_date: str | None,
         end_date: str | None,
+        flexible_dates: bool,
         travelers_count: int,
         travelers_type: str | None,
-        budget_range: str | None,
         departure_location: str | None,
         free_text: str,
         email_subject: str,
@@ -51,9 +52,9 @@ class Database:
             destination,
             date.fromisoformat(start_date) if start_date else None,
             date.fromisoformat(end_date) if end_date else None,
+            flexible_dates,
             travelers_count,
             travelers_type,
-            budget_range,
             departure_location,
             free_text,
             email_subject,

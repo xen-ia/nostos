@@ -17,7 +17,8 @@ def build_intent_prompt(trip: TripResponse) -> str:
 
     Destination from the form: {trip.destination or "not specified"}
     Departure location from the form: {trip.departure_location or "not specified"}
-    Travelers composition: {trip.travelers_composition or "not specified"}
+    Travelers count: {trip.travelers_count}
+    Travelers type: {trip.travelers_type or "not specified"}
     Budget amount: {trip.budget_amount or "not specified"}
     Travel mode: {trip.travel_mode or "not specified"}
     Stay preference: {trip.stay_preference or "not specified"}
@@ -83,12 +84,43 @@ def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks:
     """
 
 
+def build_geo_prompt(trip: TripResponse, intent: TripIntent) -> str:
+    return f"""Resolve the geographic unknowns for this trip. Return BOTH resolutions in one answer.
+
+    TRIP CONTEXT:
+    Destination from the form: {trip.destination or "not specified"}
+    Departure location from the form: {trip.departure_location or "not specified"}
+    Interests: {', '.join(intent.interests) or 'not specified'}
+    Style: {', '.join(intent.style) or 'not specified'}
+    Pace: {intent.pace or 'not specified'}
+
+    USER FREE TEXT (verbatim):
+    "{trip.free_text}"
+
+    PART 1 — ResolvedDestinations (region check):
+    - If the destination is already a specific place, return it as the single ResolvedPlace
+      with its main airport code.
+    - If the destination is a country/region (or unspecified), pick AT MOST 2 concrete places
+      (islands, cities) that fit this traveler's interests, style and pace, considering the
+      season implied by the trip dates and the brief. Each place gets its main IATA airport.
+    - The rationale MUST be written in ITALIAN.
+
+    PART 2 — DepartureAirports (departure expansion):
+    - If the departure location is a city, region or country, list 1..4 candidate IATA codes
+      for its main international airports (max 4).
+    - If the departure location is not placeable, NEVER invent codes: return an empty list.
+
+    Do not invent airport codes that do not exist.
+    """
+
+
 def build_email_prompt(
     intent: TripIntent,
     flights_block: str,
     maps_block: str,
     places_block: str,
     trip: TripResponse | None = None,
+    resolve_rationale: str = "",
 ) -> str:
     return f"""Write the trip email for this traveler.
 
@@ -96,11 +128,12 @@ def build_email_prompt(
     Interests: {', '.join(intent.interests) or 'not specified'}
     Style sought: {', '.join(intent.style) or 'not specified'}
     Pace: {intent.pace or 'not specified'}
-    Travelers: {trip.travelers_composition if trip else 'not specified'}
+    Travelers count: {trip.travelers_count if trip else 'not specified'}
+    Travelers type: {trip.travelers_type if trip else 'not specified'}
     Budget: {trip.budget_amount if trip else 'not specified'}
     Travel mode: {trip.travel_mode if trip else 'not specified'}
     Stay preference: {trip.stay_preference if trip else 'not specified'}
-
+{f"\n    Focus scelto dal sistema: {resolve_rationale}\n" if resolve_rationale else ""}
     USER FREE TEXT (verbatim):
     "{trip.free_text if trip else ''}"
 
