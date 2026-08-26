@@ -1,0 +1,40 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /home/${{ secrets.VM_USER }}/nostos
+            echo "==> Pulling latest main..."
+            git fetch origin
+            git checkout main
+            git pull origin main
+            echo "==> Running deploy script..."
+            ./scripts/deploy.sh
+            echo "==> Deploy completed"

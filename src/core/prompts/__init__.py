@@ -89,6 +89,8 @@ def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks:
     Travel mode: {intent.travel_mode or 'not specified'}
     Accommodation style: {intent.accommodation_style or 'not specified'}
     Mobility: {', '.join(intent.mobility_preferences) or 'not specified'}
+    Destination: {trip.destination or 'not specified'}
+    Departure: {trip.departure_location or 'not specified'}
 
     CORPUS (numbered with zero-based indices in brackets; reference ONLY these indices):
     {corpus_blocks}
@@ -96,6 +98,9 @@ def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks:
     Rules: pick by merit for THIS brief — quality and fit, never filler. Zero items in a
     category is a valid choice when nothing fits. For travel_mode 'van_life' prefer van/camping
     stays; for 'sailing' prefer boat stays; for 'road_trip' prefer stops along route.
+    IMPORTANT: For intercontinental or long-distance trips (different country/continent from departure),
+    ALWAYS include at least one flight option if available. For 'fixed' travel_mode, flights are the
+    primary way to reach the destination — prioritize them.
     Return zero-based indices only, plus a short Italian rationale.
     """
 
