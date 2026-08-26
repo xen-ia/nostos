@@ -1456,7 +1456,7 @@
     }
     fbSend.disabled = true;
     try {
-      const res = await fetch(`${API_BASE}/trips/${currentTripId}/feedback`, {
+      const res = await fetch(`${API_BASE}/trips/${currentTripId}/feedback/public`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating: fbRating, comment: fbComment.value.trim() || null }),

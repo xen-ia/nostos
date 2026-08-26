@@ -151,8 +151,8 @@ async def test_van_trip_skips_all_flight_probes(monkeypatch):
 
     assert calls == [], "travel_mode van must execute zero probes"
     skips = [tc for tc in db.saved[0]["package"]["tool_calls"] if tc.get("engine") == "google_flights"]
-    assert skips == [{"engine": "google_flights", "skipped": True, "reason": "travel_mode:van"}]
-    assert db.saved[0]["package"]["geo"]["skipped_flights_reason"] == "travel_mode:van"
+    assert skips == [{"engine": "google_flights", "skipped": True, "reason": "travel_mode:van_life"}]
+    assert db.saved[0]["package"]["geo"]["skipped_flights_reason"] == "travel_mode:van_life"
 
 
 async def test_missing_airports_after_geo_planning_skips_probes(monkeypatch):

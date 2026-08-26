@@ -45,7 +45,7 @@ MAX_FLIGHT_PROBES = 8
 MAX_DEPARTURE_AIRPORTS = 4
 MAX_RESOLVED_DESTINATIONS = 2
 FLEXIBLE_WINDOW_SHIFT_DAYS = 7
-FLIGHT_BLOCKING_TRAVEL_MODES = frozenset({"auto", "van", "treno"})
+FLIGHT_BLOCKING_TRAVEL_MODES = frozenset({"road_trip", "van_life", "sailing"})
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
@@ -428,8 +428,17 @@ class TripOrchestrator:
         ))
 
         # Flight matrix (spec C3): gates first, then capped prioritized probes.
-        if trip.travel_mode in FLIGHT_BLOCKING_TRAVEL_MODES:
-            skipped_reason = f"travel_mode:{trip.travel_mode}"
+        # Use intent.travel_mode (LLM-extracted, semantic); fallback to form trip.travel_mode for compat
+        effective_travel_mode = (intent.travel_mode or "").lower()
+        if not effective_travel_mode:
+            # Map legacy form values to new semantics
+            legacy = (trip.travel_mode or "").lower()
+            if legacy in {"auto", "van"}:
+                effective_travel_mode = "road_trip" if legacy == "auto" else "van_life"
+            elif legacy == "treno":
+                effective_travel_mode = "road_trip"  # treno = fixed base, but no flights needed
+        if effective_travel_mode in FLIGHT_BLOCKING_TRAVEL_MODES:
+            skipped_reason = f"travel_mode:{effective_travel_mode}"
         else:
             departures = departure_codes or _valid_iata([intent.departure_airport_code])
             arrivals = (
@@ -628,13 +637,22 @@ class TripOrchestrator:
                 for it in items
             ]
 
+        # Only include the winning flight link (not all probed combinations)
+        winning_flight_link = None
+        if corpus.get("flights"):
+            winning_flight_link = corpus["flights"][0].get("link")
+
+        source_links = []
+        if winning_flight_link:
+            source_links.append(winning_flight_link)
+
         return {
             "groups": [
                 ("Voli", brief_items(corpus["flights"])),
                 ("Dove stare", brief_items(corpus["places"])),
                 ("Cosa fare", brief_items(corpus["maps"])),
             ],
-            "source_links": research.get("sources", []),
+            "source_links": source_links,
         }
 
     @staticmethod
