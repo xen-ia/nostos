@@ -205,6 +205,32 @@ class TripOrchestrator:
                 parts.append(f"   {item['description']}")
             parts.append(f"   {item['link']}")
             lines.append("\n".join(parts))
+
+        # Travel mode section for text version
+        travel_mode = email_content.get("travel_mode")
+        mobility = email_content.get("mobility")
+        if travel_mode and travel_mode != "fixed":
+            mode_labels = {
+                "road_trip": "Come muoversi in loco",
+                "van_life": "Vita in van",
+                "sailing": "Navigazione",
+            }
+            if travel_mode in mode_labels:
+                lines.append("")
+                lines.append(mode_labels[travel_mode] + ":")
+                mode_descriptions = {
+                    "road_trip": "Il viaggio è pensato come road trip: tappe giornaliere con distanze gestibili, soste per il pranzo e pernottamenti lungo il percorso.",
+                    "van_life": "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri selezionati lungo il percorso.",
+                    "sailing": "Il viaggio si svolge in barca: porti di imbarco, marine per il noleggio, rotte costiere con ancoraggi sicuri.",
+                }
+                lines.append(mode_descriptions[travel_mode])
+                if mobility:
+                    lines.append(f"Mezzi: {', '.join(mobility)}")
+
+        if mobility and (not travel_mode or travel_mode == "fixed"):
+            lines.append("")
+            lines.append(f"Come spostarti: {', '.join(mobility)}")
+
         appendix = email_content.get("appendix", {})
         if appendix:
             lines.append("")
@@ -316,6 +342,59 @@ class TripOrchestrator:
         tool_calls.append({"engine": engine, "params": params, "result_count": len(results)})
         logger.info("%s: %d results (%s)", engine, len(results), params.get("q") or params.get("departure_id"))
 
+    def _enrich_queries_for_mode(self, queries: list[str], intent: TripIntent) -> list[str]:
+        """Add travel_mode/mobility context to maps queries for more targeted results."""
+        if not queries:
+            return []
+        tm = (intent.travel_mode or "").lower()
+        mobility = intent.mobility_preferences or []
+        enriched = []
+        for q in queries:
+            base = q
+            # Add mode-specific qualifiers
+            if tm == "road_trip":
+                base += " percorso strada panoramico soste"
+            elif tm == "van_life":
+                base += " area sosta camper campeggio libero van"
+            elif tm == "sailing":
+                base += " porto marina noleggio barca ormeggio"
+            # Add mobility qualifiers
+            if "auto" in mobility:
+                base += " accessibile auto parcheggio"
+            if "moto" in mobility:
+                base += " accessibile moto"
+            if "barca" in mobility:
+                base += " accessibile barca approdo"
+            enriched.append(base)
+        return enriched
+
+    def _build_places_query(self, destination: str | None, intent: TripIntent, trip: TripResponse) -> str:
+        """Build a targeted accommodation query based on travel_mode and accommodation_style."""
+        if not destination:
+            return "hotels"
+        tm = (intent.travel_mode or "").lower()
+        acc = (intent.accommodation_style or "").lower()
+        stay_pref = trip.stay_preference
+
+        # Explicit stay_preference from form takes priority
+        if stay_pref and stay_pref not in (None, "indifferente"):
+            return f"{stay_pref} stays in {destination}"
+
+        # Derive from travel_mode/accommodation_style
+        if tm == "van_life" or acc == "van":
+            return f"camper van camping area sosta in {destination}"
+        if tm == "sailing" or acc == "boat":
+            return f"porto marina ormeggio barca a vela in {destination}"
+        if tm == "road_trip" or acc == "camping":
+            return f"campeggio area sosta camper in {destination}"
+        if acc == "homestay":
+            return f"homestay guesthouse B&B in {destination}"
+        if acc == "hotel":
+            return f"hotel in {destination}"
+
+        # Default fallback
+        return f"hotels in {destination}"
+
     async def _execute_searches(
         self,
         trip: TripResponse,
@@ -340,10 +419,12 @@ class TripOrchestrator:
             self._log_call(tool_calls, engine, params, res)
             return res
 
+        # Enrich targeted queries with travel_mode/mobility context for maps
+        enriched_queries = self._enrich_queries_for_mode(targeted_queries, intent)
         maps_results = await asyncio.gather(*(
             guarded(maps.research(q, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                     "google_maps", {"q": q})
-            for q in targeted_queries
+            for q in enriched_queries
         ))
 
         # Flight matrix (spec C3): gates first, then capped prioritized probes.
@@ -395,12 +476,9 @@ class TripOrchestrator:
 
         check_in = trip.start_date or winning_window[0]
         check_out = trip.end_date or winning_window[1]
-        stay_preference = trip.stay_preference
-        places_query = (
-            f"{stay_preference} stays in {destination}"
-            if stay_preference not in (None, "indifferente") and destination
-            else f"hotels in {destination}"
-        )
+
+        # Build targeted places query based on travel_mode and accommodation_style
+        places_query = self._build_places_query(destination, intent, trip)
         stays = await guarded(
             places.search(destination=destination, query=places_query, check_in_date=check_in, check_out_date=check_out,
                           timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
@@ -525,6 +603,10 @@ class TripOrchestrator:
             "maps": [r["link"] for r in curated["maps"] if r.get("link")],
         }
         content["appendix"] = self._build_appendix(research)
+        # Pass intent fields for email template sections
+        content["travel_mode"] = intent.travel_mode
+        content["mobility"] = intent.mobility_preferences
+        content["accommodation_style"] = intent.accommodation_style
         body_text = self._compose_body_text(content)
         body_html = build_html_email(content)
         package = {

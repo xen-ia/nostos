@@ -15,7 +15,7 @@ EXPECTED_COLUMNS = [
     "free_text",
     "email_subject",
     "email_body",
-    "package_json",
+    "trip_dossier",
     "status",
     "model",
     "version",
@@ -49,11 +49,11 @@ def test_placeholders_are_sequential_from_one():
         assert re.fullmatch(rf"\${i}(?:::jsonb)?", ph), f"position {i}: unexpected placeholder {ph!r}"
 
 
-def test_jsonb_cast_on_package_json_position():
+def test_jsonb_cast_on_trip_dossier_position():
     placeholders = _placeholders()
-    package_pos = EXPECTED_COLUMNS.index("package_json")
+    package_pos = EXPECTED_COLUMNS.index("trip_dossier")
     for i, (col, ph) in enumerate(zip(EXPECTED_COLUMNS, placeholders), start=1):
-        if col == "package_json":
+        if col == "trip_dossier":
             assert ph == f"${i}::jsonb"
         else:
             assert "::jsonb" not in ph, f"unexpected ::jsonb cast on column {col}"
