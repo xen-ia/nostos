@@ -9,13 +9,13 @@ INSERT INTO trip_history (
     id, email, destination, start_date, end_date,
     flexible_dates,
     travelers_count, travelers_type, departure_location,
-    free_text, email_subject, email_body, package_json, status, model, version
+    free_text, email_subject, email_body, trip_dossier, status, model, version
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)
 ON CONFLICT (id) DO UPDATE SET
     email_subject = EXCLUDED.email_subject,
     email_body = EXCLUDED.email_body,
-    package_json = EXCLUDED.package_json,
+    trip_dossier = EXCLUDED.trip_dossier,
     status = EXCLUDED.status,
     model = EXCLUDED.model,
     version = EXCLUDED.version
@@ -112,7 +112,7 @@ class Database:
     async def get_trip_history(self, trip_id: str) -> dict | None:
         row = await self._pool.fetchrow(
             """
-            SELECT id, status, email_subject, email_body, package_json, processed_at, model, version
+            SELECT id, status, email_subject, email_body, trip_dossier, processed_at, model, version
             FROM trip_history WHERE id = $1
             """,
             UUID(trip_id),

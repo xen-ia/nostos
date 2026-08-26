@@ -39,10 +39,11 @@ def test_build_email_prompt_focus_line_omitted_when_empty():
     intent = TripIntent(destination="Tokyo")
     prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
     assert "Focus scelto dal sistema" not in prompt
-    assert (
-        "    Stay preference: agriturismo\n\n    USER FREE TEXT (verbatim):"
-        in prompt
-    )
+    assert "Travel mode: not specified" in prompt
+    assert "Accommodation style: not specified" in prompt
+    assert "Mobility: not specified" in prompt
+    assert "Budget:" in prompt
+    assert "USER FREE TEXT (verbatim):" in prompt
     assert "\n\n\n" not in prompt
 
 
@@ -51,10 +52,7 @@ def test_build_email_prompt_focus_line_rendered_when_given():
     intent = TripIntent(destination="Tokyo")
     prompt = build_email_prompt(intent, "flights", "pois", "stays", trip,
                                 resolve_rationale="mete scelte per mare e quiete")
-    assert (
-        "    Stay preference: agriturismo\n"
-        "\n"
-        "    Focus scelto dal sistema: mete scelte per mare e quiete\n"
-        "\n"
-        "    USER FREE TEXT (verbatim):"
-    ) in prompt
+    assert "Focus scelto dal sistema: mete scelte per mare e quiete" in prompt
+    assert "Budget:" in prompt
+    assert "USER FREE TEXT (verbatim):" in prompt
+    assert "COMPOSITION RULES:" in prompt

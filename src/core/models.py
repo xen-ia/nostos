@@ -37,6 +37,31 @@ class TripIntent(BaseModel):
         default_factory=list,
         description="Vincoli espliciti: dieta, accessibilità, bambini, animali",
     )
+    travel_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Modalità di viaggio prevalente: 'fixed' (base fissa), 'road_trip' (tappe in auto/moto), "
+            "'van_life' (dormire nel veicolo lungo il percorso), 'sailing' (barca a vela/catamarano), "
+            "'mixed' (combinazione). Dedurre dal free_text e da come l'utente descrive gli spostamenti in loco."
+        ),
+    )
+    accommodation_style: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stile di pernottamento preferito: 'homestay', 'hotel', 'van', 'camping', 'boat', 'mixed'. "
+            "Se travel_mode è 'van_life' → 'van'; se 'sailing' → 'boat'; se 'road_trip' → 'van' o 'hotel'; "
+            "altrimenti 'homestay'/'hotel' per 'fixed'."
+        ),
+    )
+    mobility_preferences: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Mezzi di spostamento in loco esplicitamente menzionati o fortemente impliciti: "
+            "'auto', 'moto', 'bici', 'barca', 'trasporti_pubblici', 'a_piedi'. "
+            "Se l'utente dice 'noleggiare un van/jeep e dormire lungo il percorso' → ['auto', 'van']. "
+            "Se 'vorrei noleggiare una barca a vela' → ['barca']. Estrapolare dal free_text."
+        ),
+    )
 
 
 class EmailResource(BaseModel):

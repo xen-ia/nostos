@@ -140,11 +140,11 @@ def test_build_intent_prompt_travelers_type_missing():
 
 def test_build_email_prompt_includes_structured_inputs():
     trip = make_trip(budget_amount="1000 EUR", travel_mode="treno", stay_preference="b&b")
-    intent = TripIntent(destination="Tokyo", interests=["cibo"])
+    intent = TripIntent(destination="Tokyo", interests=["cibo"], travel_mode="treno", accommodation_style="hotel")
     prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
     assert "1000 EUR" in prompt
     assert "treno" in prompt
-    assert "b&b" in prompt
+    assert "hotel" in prompt
 
 
 def test_build_email_prompt_includes_travelers_fields():

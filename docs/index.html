@@ -166,14 +166,17 @@
     gap: 6px;
   }
 
-  .field label::before {
+  /* il pallino è un segnale di obbligo, non decorazione: solo sui campi richiesti */
+  .field label:has(+ [required])::before {
     content: '';
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: var(--terracotta);
     flex-shrink: 0;
   }
+
+  .field .opt { font-weight: 400; color: var(--ink-muted); }
 
   input[type="text"], input[type="email"], input[type="date"], input[type="number"],
   select, textarea {
@@ -537,6 +540,7 @@
 
   #status {
     max-width: 640px;
+    min-height: 1.5rem;
     margin: 1.5rem auto 0;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.8rem;
@@ -550,14 +554,27 @@
   /* ---- form v2: Altro + date flessibili ---- */
 
   .altro-input[hidden] { display: none; }
-  .altro-wrap { margin-top: -0.15rem; }
+  .altro-input {
+    border-style: dashed;
+    border-color: rgba(217,164,74,0.55);
+    background: rgba(217,164,74,0.07);
+  }
+  .altro-input::placeholder { font-style: italic; }
+  .altro-input:focus {
+    border-style: solid;
+    background: #FCF9EF;
+  }
 
   .flexible-row {
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    margin-top: 0.7rem;
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    transition: background 0.15s ease;
   }
+  .flexible-row:hover { background: rgba(217,164,74,0.08); }
   .flexible-row[hidden] { display: none; }
   .flexible-row input[type="checkbox"] {
     width: 1.05rem;
@@ -870,17 +887,17 @@
         </div>
       </div>
 
-      <div class="field full">
+      <div class="field">
         <label for="departure_location">Parti da</label>
         <input type="text" id="departure_location" placeholder="Es. Milano" autocomplete="off" enterkeyhint="next">
       </div>
 
       <div class="field full">
-        <label for="budget_amount">Budget (facoltativo)</label>
-        <input type="text" id="budget_amount" placeholder="Es. max 1500 EUR a persona" autocomplete="off" enterkeyhint="next">
+        <label for="budget_amount">Budget <span class="opt">(facoltativo)</span></label>
+        <input type="text" id="budget_amount" placeholder="Es. max 1500 EUR" autocomplete="off" enterkeyhint="next">
       </div>
 
-      <div class="field full">
+      <div class="field">
         <label for="travel_mode">Come preferisci muoverti?</label>
         <select id="travel_mode">
           <option value="indifferente" selected>Non importa</option>
@@ -893,7 +910,7 @@
         <input type="text" class="altro-input" id="travel_mode_altro" placeholder="es. barca a vela…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica come preferisci muoverti">
       </div>
 
-      <div class="field full">
+      <div class="field">
         <label for="stay_preference">Dove preferisci dormire?</label>
         <select id="stay_preference">
           <option value="indifferente" selected>Non importa</option>
@@ -980,7 +997,6 @@
       <button type="button" class="fb-star" data-rating="5" aria-label="5 stelle">★</button>
     </div>
     <textarea id="fb-comment" class="fb-comment" placeholder="Un commento (facoltativo)" enterkeyhint="done"></textarea>
-    <br>
     <button type="button" id="fb-send">Invia feedback</button>
     <p class="fb-error" id="fb-error" hidden></p>
   </div>

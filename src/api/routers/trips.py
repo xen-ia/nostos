@@ -6,6 +6,7 @@ from src.infrastructure.queue import enqueue_trip
 from src.core.schemas import FeedbackRequest, FeedbackResponse, TripCreateRequest, TripResponse, now_iso
 from src.api.security import RateLimiter, build_rate_limiter, rate_limit_key, require_api_token
 from src.services.trip_store import TripNotFoundError, TripStore
+from src.settings import Settings
 
 router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
 
@@ -88,6 +89,35 @@ async def submit_feedback(
 ):
     limiter = build_rate_limiter(request)
     await limiter.check(rate_limit_key(request))
+
+    await db.save_feedback(trip_id, payload.rating, payload.comment)
+    return FeedbackResponse(
+        trip_id=trip_id,
+        rating=payload.rating,
+        comment=payload.comment,
+        created_at=now_iso(),
+    )
+
+
+@router.post(
+    "/{trip_id}/feedback/public",
+    response_model=FeedbackResponse,
+    status_code=201,
+)
+async def submit_feedback_public(
+    trip_id: str,
+    payload: FeedbackRequest,
+    request: Request,
+    db=Depends(get_database),
+):
+    """Public feedback endpoint for frontend (no auth), rate-limited by IP."""
+    settings: Settings = request.app.state.settings
+    public_limiter = RateLimiter(
+        request.app.state.redis,
+        max_requests=min(5, settings.rate_limit_max),
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+    await public_limiter.check(rate_limit_key(request))
 
     await db.save_feedback(trip_id, payload.rating, payload.comment)
     return FeedbackResponse(
