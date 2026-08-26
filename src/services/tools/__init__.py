@@ -2,6 +2,10 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from src.services.tools._util import dedupe_cap
+
+__all__ = ["dedupe_cap", "make_extract_tool", "make_responses_tool", "make_ollama_schema"]
+
 T = TypeVar("T", bound=BaseModel)
 
 EXTRACT_TOOL_NAME = "extract"

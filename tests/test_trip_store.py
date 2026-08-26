@@ -15,12 +15,37 @@ async def test_create_get_roundtrip():
     assert got.destination == "Tokyo"
     assert got.start_date == "2026-09-01"
     assert got.end_date == "2026-09-10"
-    assert got.flexible_dates is True
     assert got.travelers_count == 2
     assert got.travelers_type == "coppia"
-    assert got.budget_range == "medio"
+    assert got.budget_amount is None
     assert got.departure_location == "MXP"
     assert got.status == TripStatus.PENDING
+
+
+async def test_create_get_roundtrip_structured_inputs():
+    store = make_store()
+    trip = await store.create(
+        make_trip(
+            flexible_dates=True,
+            budget_amount="max 1500 EUR a persona",
+            travel_mode="van",
+            stay_preference="agriturismo",
+        )
+    )
+    got = await store.get(trip.id)
+
+    assert got.flexible_dates is True
+    assert got.budget_amount == "max 1500 EUR a persona"
+    assert got.travel_mode == "van"
+    assert got.stay_preference == "agriturismo"
+
+
+async def test_flexible_dates_defaults_false_in_store():
+    store = make_store()
+    trip = await store.create(make_trip())
+    got = await store.get(trip.id)
+
+    assert got.flexible_dates is False
 
 
 async def test_get_missing_raises():

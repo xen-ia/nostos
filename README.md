@@ -5,8 +5,10 @@ nostos/
 ├── main.py                    # shim: uv run main.py → src/api/main.py
 ├── schema.sql
 ├── Dockerfile
+├── scripts/
+│   └── deploy.sh              # build + schema + start (web + worker + pgweb)
 ├── docs/
-│   └── index.html
+│   └── index.html             # frontend (gh-pages)
 └── src/
     ├── api/                   # web layer (FastAPI)
     │   ├── main.py
@@ -19,17 +21,19 @@ nostos/
     │   ├── orchestrator.py
     │   ├── models.py
     │   ├── schemas.py
-    │   └── prompts/
+    │   └── prompts/           # system_prompt.md (editorial voice)
     ├── services/              # external integrations
     │   ├── apis/              # llm, email, serpapi
     │   ├── tools/             # flights, maps, places
-    │   ├── templates/
+    │   ├── templates/         # email.html, trip template (md/docx)
     │   └── trip_store.py
-    ├── infrastructure/        # storage + queue
+    ├── infrastructure/        # storage + queue + worker
     │   ├── database.py
     │   ├── jobs.py
     │   ├── worker.py
-    │   └── queue.py
+    │   ├── queue.py
+    │   └── version.py         # app version from pyproject.toml
+    ├── knowledge/             # curated per-destination briefs for the LLM
     ├── settings.py
     └── logging.py
 ```
@@ -67,7 +71,7 @@ curl -s -X POST http://localhost:3072/api/v1/trips \
     "flexible_dates": false,
     "travelers_count": 2,
     "travelers_type": "coppia",
-    "budget_range": "medio",
+    "budget_amount": null,
     "free_text": "cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle. Vorrei fare una vacanza in road trip: noleggiare un van/jeep e dormire lungo il percorso"
   }'
 ```
@@ -81,38 +85,87 @@ curl -s -X POST http://localhost:3072/api/v1/trips \
     "departure_location": "Italy",
     "start_date": null,
     "end_date": null,
-    "flexible_dates": true,
     "travelers_count": 1,
     "travelers_type": null,
-    "budget_range": "medio",
+    "budget_amount": null,
     "free_text": "Viaggi in barca, conoscere la cultura indigena locale. Poké, cibo e tradizioni locali, mare e relax, ritmo lento, lontano dalle folle."
   }'
 ```
 
 ## Architecture
 
-### Core fundamentals
-- `src/api/main.py` — FastAPI entrypoint (root `main.py` is a thin shim). The LLM provider and timeouts are configured via `.env`; the worker executes the pipeline.
-- `src/core/orchestrator.py` — `TripOrchestrator`: extracts the intent via LLM → gathers flights/POIs/accommodations from SerpAPI → composes and sends the email.
-- `src/services/apis/` — external providers: `llm.py` (protocol + Anthropic/OpenAI/Ollama clients), `email.py` (Resend), `serpapi.py` (shared client).
-- `src/services/tools/` — pipeline capabilities: pydantic extraction schema (`__init__.py`) and `flights`/`maps`/`places` searches.
-- `src/core/prompts/system_prompt.md` — Xen-IA editorial voice, the single source of rules for the models.
-- `src/api/routers/trips.py` — REST API under `/api/v1`: `POST /trips` (202 + `Location`, enqueues an ARQ job), `GET /trips/{id}` (status), `POST /trips/{id}/feedback` (201).
-- `src/infrastructure/jobs.py` / `worker.py` / `queue.py` — ARQ job queue: `POST /trips` only enqueues; a separate worker process runs the pipeline.
-- `schema.sql` — Postgres schema: `trip_history` (status + email history) and `feedback` (ratings).
-- `docs/index.html` — mock frontend
+Nostos is a small, layered pipeline: the web layer accepts and validates, the
+core orchestrates, the services reach the outside world, and the
+infrastructure layer persists and queues. The interesting part — the part that
+makes or breaks the product — is the dialogue between the LLM and the trip
+request: everything else is plumbing that exists to serve it.
 
-### System design
+```text
+                   ┌─────────────────────────────────────────────────┐
+  browser ──POST──►│  api  (FastAPI)                                 │
+                   │  • validate + whitelist gate                    │
+                   │  • enqueue (ARQ)                                │
+                   └──────────────┬──────────────────────────────────┘
+                                  │ job
+                                  ▼
+                   ┌─────────────────────────────────────────────────┐
+                   │  worker (separate process)                      │
+                   │  orchestrator:                                  │
+                   │    LLM intent → SerpAPI → LLM email → Resend    │
+                   └──────┬───────────────────────┬──────────────────┘
+                          │                       │
+                          ▼                       ▼
+                   ┌──────────────┐       ┌──────────────────┐
+                   │  Redis       │       │  Postgres        │
+                   │  trip state  │       │  trip_history    │
+                   │  + lease     │       │  + feedback      │
+                   └──────────────┘       └──────────────────┘
+```
 
-Flow (in the background after `POST /trips`): form → `TripStore` (Redis) → intent extraction via LLM → SerpAPI searches (flights/POIs/accommodations) → email composition via LLM → Resend send → Postgres history.
+Follow a trip and you will meet every layer:
 
-- **FastAPI (`src/api/main.py`)** — API + lifespan (Redis/Postgres connections). All config (provider, timeouts) comes from `.env`; the worker runs the pipeline.
-- **Redis** — trip job store: creation, status (`PENDING`/`RUNNING`/`ERROR`/…) and atomic `SET NX EX` lock against double execution.
-- **Postgres** — `trip_history`: history of sent emails (intent, searched package, subject/body) + `feedback`; schema in `schema.sql`.
-- **LLM (`LLMClient` protocol)** — structured extraction via tool-call on pydantic models (`TripIntent`, `EmailContent`). Implementations: `AnthropicClient`, `OpenAIClient` (Responses API), `OllamaClient`; provider/model chosen via `.env` (overridable on the worker CLI).
-- **SerpAPI** — searches flights (`google_flights`), POIs (`google_maps`), accommodations (`google_hotels`), with a configurable timeout; the engine and its input params are logged. Category without valid results → discarded; if all are empty, the trip stops without sending the email.
-- **Resend** — transactional email sending (`EmailSender`), configurable timeout.
-- **Prompts (`system_prompt.md`)** — Xen-IA editorial voice, the single source of rules; per-task prompts only bring in the data context.
+1. **The browser submits** the form (`docs/index.html`). The payload is
+   deliberately simple — email, destination, dates, a few selects — and a
+   `free_text` field leaves room for the signals that matter most: "not the
+   usual places", "away from the crowds". Those signals are precious data and
+   the system is built around treating them as such.
+
+2. **FastAPI accepts** (`src/api/routers/trips.py`). Every request is checked
+   against the email whitelist (the endpoint is public, so the whitelist is
+   the gate) and rate-limited. The API never does the work: it creates a trip
+   record in Redis, enqueues an ARQ job, and answers `202 Accepted` with a
+   `Location` header.
+
+3. **The worker picks it up** (`src/infrastructure/worker.py`). A separate
+   process (it must run for trips to actually execute) claims the trip with an
+   atomic Redis lock, so a trip can never run twice. This is where the
+   pipeline runs:
+
+   - **Intent** — the LLM reads the request (`TripIntent` schema) and turns it
+     into structured fields: destination, airport codes, interests, style,
+     pace, constraints. Structured inputs from the form — travelers
+     composition, budget, travel mode, stay preference — join the free text
+     here, so the model composes against real constraints.
+   - **Research** — SerpAPI searches flights, points of interest and
+     accommodations (`src/services/tools/`). A category with no valid results
+     is dropped; if everything comes back empty, the trip stops and no email
+     is sent.
+   - **Composition** — a second LLM call writes the email (`EmailContent`
+     schema) against a strict editorial voice (`src/core/prompts/system_prompt.md`),
+     using *only* the researched resources — nothing invented.
+   - **Delivery** — Resend sends the email. The history is persisted in
+     Postgres with status, the model used, and the app version.
+
+4. **The infrastructure remembers** (`src/infrastructure/`). Redis holds the
+   trip's live state and its lease; Postgres (`schema.sql`) keeps the durable
+   history — inputs, the researched package, subject/body, status, model,
+   version, and timing — so you can audit every trip long after the Redis
+   record has expired. A `feedback` table closes the loop on quality.
+
+The layers are easy to read in the file tree: `src/api/` (web), `src/core/`
+(orchestration + LLM schemas), `src/services/` (LLM/SerpAPI/Resend clients and
+search tools), `src/infrastructure/` (storage, queue, worker). Every design
+decision behind this shape is recorded in `docs/adr/`.
 
 ## Deploy (self-hosted VM — Oracle Cloud Free Tier)
 

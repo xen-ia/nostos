@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class TripStatus(StrEnum):
@@ -14,6 +14,8 @@ class TripStatus(StrEnum):
 
 
 class TripCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     destination: Optional[str] = Field(default=None, max_length=200)
     start_date: Optional[str] = None
@@ -21,9 +23,11 @@ class TripCreateRequest(BaseModel):
     flexible_dates: bool = False
     travelers_count: int = Field(1, ge=1, le=20)
     travelers_type: Optional[Literal["solo", "coppia", "famiglia", "amici", "gruppo"]] = None
-    budget_range: Optional[Literal["economico", "medio", "alto", "no-limit"]] = None
     departure_location: Optional[str] = Field(default=None, max_length=200)
     free_text: str = Field(default="", max_length=5000)
+    budget_amount: Optional[str] = Field(default=None, max_length=200)
+    travel_mode: Optional[Literal["volo", "treno", "auto", "van", "indifferente"]] = None
+    stay_preference: Optional[Literal["hotel", "b&b", "agriturismo", "glamping", "camping", "indifferente"]] = None
 
     @field_validator("start_date", "end_date")
     @classmethod

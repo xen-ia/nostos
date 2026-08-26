@@ -55,5 +55,16 @@ services:
       redis:
         condition: service_healthy
 
+  pgweb:
+    image: sosedoff/pgweb:latest
+    restart: unless-stopped
+    environment:
+      PGWEB_DATABASE_URL: postgres://nostos:${POSTGRES_PASSWORD}@postgres:5432/nostos?sslmode=disable
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

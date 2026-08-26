@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from src.services.apis.serpapi import search as serpapi_search
+from src.services.tools._util import dedupe_cap
 
 
 def _default_dates() -> tuple[str, str]:
@@ -24,11 +25,11 @@ def _normalize(property_: dict) -> dict:
 
 
 async def search(
+    *,
     destination: Optional[str],
-    interests: list[str],
-    style: list[str],
     check_in_date: Optional[str] = None,
     check_out_date: Optional[str] = None,
+    query: Optional[str] = None,
     timeout: float = 60.0,
     api_key: str | None = None,
 ) -> list[dict]:
@@ -36,9 +37,7 @@ async def search(
     if not destination:
         return []
 
-    query = f"hotels in {destination}"
-    if interests:
-        query = f"hotels in {destination}: {interests[0]}"
+    query = query or f"hotels in {destination}"
 
     check_in, check_out = check_in_date, check_out_date
     if not check_in or not check_out:
@@ -57,5 +56,6 @@ async def search(
         api_key=api_key,
     )
 
-    properties = data.get("properties", [])
-    return [_normalize(p) for p in properties[:5]]
+    properties = [_normalize(p) for p in data.get("properties", [])]
+    linked = [p for p in properties if p.get("link")]
+    return dedupe_cap(linked, cap=8)

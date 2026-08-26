@@ -64,12 +64,118 @@ def _render_card(item: dict) -> str:
     )
 
 
+_GROUP_HEADINGS = {"flights": "Voli", "places": "Dove stare", "maps": "Cosa fare"}
+
+
+def _render_group(label: str, items: list[dict]) -> str:
+    if not items:
+        return ""
+    head = f'<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#4E6071;margin:16px 0 8px;">{_e(label)}</div>'
+    return head + "\n".join(_render_card(item) for item in items)
+
+
+def _grouped_cards(content: dict) -> str:
+    smap = content.get("sections_map", {})
+    used: set[str] = set()
+    out = []
+    for kind, label in _GROUP_HEADINGS.items():
+        allow = set(smap.get(kind, []))
+        items = [r for r in content.get("resources", []) if r.get("link") in allow and r["link"] not in used]
+        for r in items:
+            used.add(r["link"])
+        out.append(_render_group(label, items))
+    leftovers = [r for r in content.get("resources", []) if r.get("link") not in used]
+    if leftovers:
+        out.append("\n".join(_render_card(r) for r in leftovers))  # unmatched singles render flat
+    return "\n".join(o for o in out if o)
+
+
+def _render_appendix(appendix: dict) -> str:
+    rows = []
+    for label, items in appendix.get("groups", []):
+        if not items:
+            continue
+        lis = "\n".join(
+            f'<li style="margin:2px 0;"><a href="{_e(i["link"])}" target="_blank" style="color:#4E6071;">{_e(i.get("name") or i["link"])}</a></li>'
+            for i in items if i.get("link")
+        )
+        rows.append(f'<div style="font-size:12px;color:#4E6071;margin-top:6px;">{_e(label)}</div><ul style="margin:4px 0 0;padding-left:18px;">{lis}</ul>')
+    src = "".join(f' <a href="{_e(u)}" target="_blank" style="color:#7A8895;">ricerca</a>' for u in appendix.get("source_links", []) if u)
+    if not rows and not src:
+        return ""
+    inner = "".join(rows) + (f'<div style="font-size:11px;color:#7A8895;margin-top:10px;">Ricerche effettuate:{src}</div>' if src else "")
+    return (
+        '<details style="margin-top:8px;"><summary style="cursor:pointer;font-family:\'IBM Plex Sans\',Arial,sans-serif;'
+        'font-size:12px;font-weight:600;color:#4E6071;">Tutto quello che abbiamo esplorato</summary>'
+        f'<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;">{inner}</div></details>'
+    )
+
+
+_TRAVEL_MODE_BLOCKS = {
+    "road_trip": (
+        "Come muoversi in loco",
+        "Il viaggio è pensato come road trip: ti suggeriamo tappe giornaliere con distanze gestibili, "
+        "soste per il pranzo e pernottamenti lungo il percorso. L'auto (o moto) ti dà libertà totale "
+        "di deviare verso i luoghi che scoprirai strada facendo."
+    ),
+    "van_life": (
+        "Vita in van",
+        "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri "
+        "selezionati lungo il percorso. Ti segnaliamo dove rifornire acqua, scaricare e ricaricare."
+    ),
+    "sailing": (
+        "Navigazione",
+        "Il viaggio si svolge in barca: ti indichiamo porti di imbarco, marine per il noleggio, "
+        "rotte costiere con ancoraggi sicuri e tappe a terra per rifornimenti ed esplorazioni."
+    ),
+}
+
+
+def _render_travel_mode_block(travel_mode: str | None, mobility: list[str] | None) -> str:
+    if not travel_mode or travel_mode == "fixed":
+        return ""
+    tm = travel_mode.lower()
+    if tm not in _TRAVEL_MODE_BLOCKS:
+        return ""
+    heading, body = _TRAVEL_MODE_BLOCKS[tm]
+    mob = ", ".join(mobility) if mobility else ""
+    extra = f"\n<div class='d-muted' style='font-size:13px;color:#4E6071;margin-top:6px;'><em>Mezzi: {mob}</em></div>" if mob else ""
+    return (
+        f'<div style="margin-top:24px;padding:18px 20px;background-color:#EBF2F8;border:1px solid #B58026;'
+        f'border-radius:12px;">'
+        f'<div style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;font-weight:600;color:#B58026;'
+        f'margin-bottom:8px;">{_e(heading)}</div>'
+        f'<div class="d-bodytext" style="font-family:\'Fraunces\',Georgia,serif;font-size:15px;line-height:1.6;color:#221D0F;">'
+        f'{_e(body)}</div>{extra}</div>'
+    )
+
+
+def _render_mobility_inline(mobility: list[str] | None) -> str:
+    if not mobility:
+        return ""
+    mob_text = ", ".join(mobility)
+    return (
+        f'<div style="margin-top:16px;padding:14px 18px;background-color:#F5F8FB;border:1px solid #D0DDE9;'
+        f'border-radius:10px;">'
+        f'<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;font-size:12px;font-weight:600;'
+        f'letter-spacing:1px;text-transform:uppercase;color:#4E6071;margin-bottom:6px;">Come spostarti</div>'
+        f'<div class="d-bodytext" style="font-family:\'Fraunces\',Georgia,serif;font-size:14px;line-height:1.55;color:#221D0F;">'
+        f'Mezzi suggeriti: {_e(mob_text)}</div></div>'
+    )
+
+
 def build_html_email(content: dict) -> str:
-    resource_cards = "\n".join(_render_card(item) for item in content.get("resources", []))
+    travel_mode = content.get("travel_mode")
+    mobility = content.get("mobility")
+    travel_mode_html = _render_travel_mode_block(travel_mode, mobility)
+    mobility_html = _render_mobility_inline(mobility)
     return load_email_template().safe_substitute(
         opening=_e(content["opening"]),
         understanding=_e(content["understanding"]),
-        resource_cards=resource_cards,
+        resource_groups=_grouped_cards(content),
+        travel_mode_section=travel_mode_html,
+        mobility_section=mobility_html,
+        appendix=_render_appendix(content.get("appendix", {})),
         cta=_e(content["cta"]),
         honest_note=_e(content["honest_note"]),
         signature_greeting=_e(SIGNATURE_GREETING),

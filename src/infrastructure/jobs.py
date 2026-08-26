@@ -5,6 +5,7 @@ import redis.asyncio as redis_async
 from src.services.apis.email import EmailSender
 from src.services.apis.llm import build_llm_client
 from src.infrastructure.database import Database
+from src.infrastructure.version import get_app_version
 from src.core.orchestrator import TripOrchestrator
 from src.settings import get_settings
 from src.services.trip_store import TripStore
@@ -35,6 +36,7 @@ async def run_trip_job(ctx: dict, trip_id: str) -> None:
             email_timeout=settings.email_timeout,
             serpapi_api_key=settings.serpapi_key or None,
             llm_model=_active_model(settings),
+            app_version=get_app_version(),
         )
         await orchestrator.run()
     finally:

@@ -37,6 +37,31 @@ class TripIntent(BaseModel):
         default_factory=list,
         description="Vincoli espliciti: dieta, accessibilità, bambini, animali",
     )
+    travel_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Modalità di viaggio prevalente: 'fixed' (base fissa), 'road_trip' (tappe in auto/moto), "
+            "'van_life' (dormire nel veicolo lungo il percorso), 'sailing' (barca a vela/catamarano), "
+            "'mixed' (combinazione). Dedurre dal free_text e da come l'utente descrive gli spostamenti in loco."
+        ),
+    )
+    accommodation_style: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stile di pernottamento preferito: 'homestay', 'hotel', 'van', 'camping', 'boat', 'mixed'. "
+            "Se travel_mode è 'van_life' → 'van'; se 'sailing' → 'boat'; se 'road_trip' → 'van' o 'hotel'; "
+            "altrimenti 'homestay'/'hotel' per 'fixed'."
+        ),
+    )
+    mobility_preferences: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Mezzi di spostamento in loco esplicitamente menzionati o fortemente impliciti: "
+            "'auto', 'moto', 'bici', 'barca', 'trasporti_pubblici', 'a_piedi'. "
+            "Se l'utente dice 'noleggiare un van/jeep e dormire lungo il percorso' → ['auto', 'van']. "
+            "Se 'vorrei noleggiare una barca a vela' → ['barca']. Estrapolare dal free_text."
+        ),
+    )
 
 
 class EmailResource(BaseModel):
@@ -71,3 +96,53 @@ class EmailContent(BaseModel):
             "Niente di inventato. Se i dati sono insufficienti, inserisci meno voci."
         )
     )
+
+
+class DateWindow(BaseModel):
+    start: str = Field(description="Inizio finestra candidata, ISO YYYY-MM-DD")
+    end: str = Field(description="Fine finestra candidata, ISO YYYY-MM-DD")
+    rationale: str = Field(default="", description="Perché questa finestra è adatta al viaggio")
+
+
+class PeriodPlan(BaseModel):
+    windows: list[DateWindow] = Field(
+        default_factory=list,
+        description="Massimo 2 finestre temporali candidate, entrambe nel futuro",
+    )
+
+
+class TargetQuery(BaseModel):
+    query: str = Field(description="Query di ricerca mirata, stessa lingua della destinazione")
+    based_on: str = Field(default="", description="Anchor dall'esplorazione da cui deriva la query")
+
+
+class TargetQueries(BaseModel):
+    queries: list[TargetQuery] = Field(
+        default_factory=list,
+        description="Massimo 4 query mirate, ognuna derivata da un anchor dell'esplorazione",
+    )
+
+
+class Curation(BaseModel):
+    flight_indices: list[int] = Field(default_factory=list, description="Indici dei voli selezionati")
+    poi_indices: list[int] = Field(default_factory=list, description="Indici dei POI selezionati")
+    stay_indices: list[int] = Field(default_factory=list, description="Indici degli alloggi selezionati")
+    rationale: str = Field(default="", description="Breve motivazione delle scelte, in italiano")
+
+
+class ResolvedPlace(BaseModel):
+    name: str = Field(description="Nome della meta concreta (isola, città)")
+    country: str = Field(default="", description="Paese/Territorio")
+    airport_code: Optional[str] = Field(default=None, description="Codice IATA principale della meta")
+
+
+class ResolvedDestinations(BaseModel):
+    destinations: list[ResolvedPlace] = Field(
+        default_factory=list,
+        description="Max 2 mete concrete; vuota se la destinazione era già specifica",
+    )
+    rationale: str = Field(default="", description="In italiano: perché queste mete per questo viaggiatore")
+
+
+class DepartureAirports(BaseModel):
+    codes: list[str] = Field(default_factory=list, description="1..4 codici IATA candidati di partenza")

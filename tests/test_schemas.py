@@ -69,3 +69,37 @@ def test_nullable_fields_default_none():
     assert trip.destination is None
     assert trip.start_date is None
     assert trip.free_text == ""
+
+
+def test_structured_inputs_accepted():
+    trip = TripCreateRequest(
+        email="a@b.com",
+        flexible_dates=True,
+        budget_amount="max 1500 EUR a persona",
+        travel_mode="van",
+        stay_preference="agriturismo",
+    )
+    assert trip.flexible_dates is True
+    assert trip.budget_amount == "max 1500 EUR a persona"
+    assert trip.travel_mode == "van"
+    assert trip.stay_preference == "agriturismo"
+
+
+def test_structured_inputs_default_none():
+    trip = TripCreateRequest(email="a@b.com")
+    assert trip.flexible_dates is False
+    assert trip.budget_amount is None
+    assert trip.travel_mode is None
+    assert trip.stay_preference is None
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("travel_mode", "razzo"),
+        ("stay_preference", "castello"),
+    ],
+)
+def test_invalid_literal_inputs_rejected(field, value):
+    with pytest.raises(ValidationError):
+        TripCreateRequest(email="a@b.com", **{field: value})

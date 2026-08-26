@@ -1,7 +1,25 @@
 import asyncpg
 import json
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
+
+
+SAVE_TRIP_HISTORY_SQL = """
+INSERT INTO trip_history (
+    id, email, destination, start_date, end_date,
+    flexible_dates,
+    travelers_count, travelers_type, departure_location,
+    free_text, email_subject, email_body, trip_dossier, status, model, version
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)
+ON CONFLICT (id) DO UPDATE SET
+    email_subject = EXCLUDED.email_subject,
+    email_body = EXCLUDED.email_body,
+    trip_dossier = EXCLUDED.trip_dossier,
+    status = EXCLUDED.status,
+    model = EXCLUDED.model,
+    version = EXCLUDED.version
+"""
 
 
 class Database:
@@ -18,7 +36,6 @@ class Database:
         flexible_dates: bool,
         travelers_count: int,
         travelers_type: str | None,
-        budget_range: str | None,
         departure_location: str | None,
         free_text: str,
         email_subject: str,
@@ -26,22 +43,10 @@ class Database:
         package: dict | None = None,
         status: str = "running",
         model: str | None = None,
+        version: str | None = None,
     ) -> None:
         await self._pool.execute(
-            """
-            INSERT INTO trip_history (
-                id, email, destination, start_date, end_date, flexible_dates,
-                travelers_count, travelers_type, budget_range, departure_location,
-                free_text, email_subject, email_body, package_json, status, model
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)
-            ON CONFLICT (id) DO UPDATE SET
-                email_subject = EXCLUDED.email_subject,
-                email_body = EXCLUDED.email_body,
-                package_json = EXCLUDED.package_json,
-                status = EXCLUDED.status,
-                model = EXCLUDED.model
-            """,
+            SAVE_TRIP_HISTORY_SQL,
             UUID(trip_id),
             email,
             destination,
@@ -50,7 +55,6 @@ class Database:
             flexible_dates,
             travelers_count,
             travelers_type,
-            budget_range,
             departure_location,
             free_text,
             email_subject,
@@ -58,13 +62,31 @@ class Database:
             json.dumps(package) if package is not None else None,
             status,
             model,
+            version,
         )
 
-    async def update_status(self, trip_id: str, status: str) -> None:
+    async def update_status(
+        self,
+        trip_id: str,
+        status: str,
+        send_datetime: datetime | None = None,
+        error_message: str | None = None,
+        duration_seconds: float | None = None,
+    ) -> None:
         await self._pool.execute(
-            "UPDATE trip_history SET status = $2 WHERE id = $1",
+            """
+            UPDATE trip_history SET
+                status = $2,
+                send_datetime = COALESCE($3, send_datetime),
+                error_message = $4,
+                duration_seconds = COALESCE($5, duration_seconds)
+            WHERE id = $1
+            """,
             UUID(trip_id),
             status,
+            send_datetime,
+            error_message,
+            duration_seconds,
         )
 
     async def save_feedback(self, trip_id: str, rating: int, comment: str | None) -> None:
@@ -90,7 +112,7 @@ class Database:
     async def get_trip_history(self, trip_id: str) -> dict | None:
         row = await self._pool.fetchrow(
             """
-            SELECT id, status, email_subject, email_body, package_json, timestamp, model
+            SELECT id, status, email_subject, email_body, trip_dossier, processed_at, model, version
             FROM trip_history WHERE id = $1
             """,
             UUID(trip_id),
