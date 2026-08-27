@@ -100,7 +100,10 @@ def _render_appendix(appendix: dict) -> str:
             for i in items if i.get("link")
         )
         rows.append(f'<div style="font-size:12px;color:#4E6071;margin-top:6px;">{_e(label)}</div><ul style="margin:4px 0 0;padding-left:18px;">{lis}</ul>')
-    src = "".join(f' <a href="{_e(u)}" target="_blank" style="color:#7A8895;">ricerca</a>' for u in appendix.get("source_links", []) if u)
+    src = "".join(
+        f' <a href="{_e(u["link"])}" target="_blank" style="color:#7A8895;">{_e(u.get("name") or "ricerca")}</a>'
+        for u in appendix.get("source_links", []) if u.get("link")
+    )
     if not rows and not src:
         return ""
     inner = "".join(rows) + (f'<div style="font-size:11px;color:#7A8895;margin-top:10px;">Ricerche effettuate:{src}</div>' if src else "")

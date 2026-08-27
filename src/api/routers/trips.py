@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from src.api.dependencies import get_arq, get_database, get_trip_store
 from src.api.errors import APIError, ErrorCode
 from src.infrastructure.queue import enqueue_trip
-from src.core.schemas import FeedbackRequest, FeedbackResponse, TripCreateRequest, TripResponse, now_iso
+from src.core.schemas import FeedbackRequest, FeedbackResponse, TripCreateRequest, TripResponse, TripStatusPublic, now_iso
 from src.api.security import RateLimiter, build_rate_limiter, rate_limit_key, require_api_token
 from src.services.trip_store import TripNotFoundError, TripStore
 from src.settings import Settings
@@ -125,4 +125,36 @@ async def submit_feedback_public(
         rating=payload.rating,
         comment=payload.comment,
         created_at=now_iso(),
+    )
+
+
+@router.get(
+    "/{trip_id}/status/public",
+    response_model=TripStatusPublic,
+)
+async def get_trip_status_public(
+    trip_id: str,
+    request: Request,
+    store: TripStore = Depends(get_trip_store),
+):
+    """Public trip status endpoint (no auth, no PII). Returns only status, email_subject, email_body, error_message."""
+    settings: Settings = request.app.state.settings
+    public_limiter = RateLimiter(
+        request.app.state.redis,
+        max_requests=min(20, settings.rate_limit_max),
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+    await public_limiter.check(rate_limit_key(request))
+
+    try:
+        trip = await store.get(trip_id)
+    except TripNotFoundError:
+        raise APIError(ErrorCode.TRIP_NOT_FOUND, "Trip not found or expired", 404)
+
+    return TripStatusPublic(
+        trip_id=trip.id,
+        status=trip.status,
+        email_subject=trip.email_subject if trip.status == "done" else None,
+        email_body=trip.email_body if trip.status == "done" else None,
+        error_message=trip.error_message if trip.status == "error" else None,
     )

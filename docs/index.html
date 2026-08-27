@@ -1412,7 +1412,7 @@
   async function pollTrip(){
     if (!currentTripId) return;
     try {
-      const res = await fetch(`${API_BASE}/trips/${currentTripId}`);
+      const res = await fetch(`${API_BASE}/trips/${currentTripId}/status/public`);
       if (!res.ok) throw new Error(`Errore server: ${res.status}.`);
       const trip = await res.json();
       if (trip.status === "pending" || trip.status === "running"){
