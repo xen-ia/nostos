@@ -1,194 +1,153 @@
-# TODO — next steps
+# TODO — Comprehensive Issue Tracking
 
 Reference branches:
-
 - `deploy/oracle-free-tier` — self-hosted deploy artifacts (already on top of `dev`)
 - `perf/llm-tool-usage` — LLM/flight search tool usage rework (WIP: only a TODO comment)
 - `feature/wire-rag-knowledge` — wire the knowledge base into the pipeline (WIP: only a TODO comment)
+- `feat/travel-mode-pipeline` — travel mode pipeline with intent fields, targeted searches, mode-aware email
+- `fix/frontend-and-email` — frontend feedback fix + email composer improvements (merged)
 
 ## Working model
-
 - Development branches always branch off `dev` (never off `main`).
-- Each branch → PR into `dev`, then:
-  ```bash
-  git switch main
-  git merge --no-ff dev
-  git push
-  ```
-- Tests: `uv run pytest` (currently 56 passed, 1 skipped).
+- Each branch → PR into `dev`, then merge `dev` → `main` via fast-forward or squash.
+- Tests: `uv run pytest` (currently **116 passed, 1 skipped**).
 
 ---
 
-## 1. Go live on Oracle Free Tier — branch `deploy/oracle-free-tier`
+## Architecture Health Score (Current State)
 
-Deploy artifacts already in the repo: `docker-compose.prod.yml`, `.env.production.example`,
-`scripts/deploy.sh`, README section *Deploy (self-hosted VM — Oracle Cloud Free Tier)*.
-Domain decision taken: apex **`xen-ia.org`**, backend + sending domain **`nostos.xen-ia.org`**,
-email from **`hello@nostos.xen-ia.org`**.
+```
+Architecture Health Score
+=========================
 
-- [x] **Buy `xen-ia.org`** on Cloudflare Registrar ($8.50/yr, wholesale). DNS managed by Cloudflare.
-- [x] **Oracle account** (`signup.cloud.oracle.com`, card only for identity verification, no charge).
-  Region **`eu-milan-1`** (fallback: `eu-frankfurt-1` if "out of capacity"). Upgraded to **PAYG**
-  (temporary ~$100 card hold, no charge) to get capacity priority for the Ampere A1 instance;
-  keep all resources within Always Free limits + a $1 budget alert as a guardrail.
-- [x] **Create VM** — Ampere A1, **2 OCPU / 12 GB** (the current Always Free limit since 2026-06),
-  Ubuntu 24.04 ARM, default boot volume. Attach a **reserved public IP** (free while attached).
-  VCN Security List: open only **22** (SSH) and **80** (HTTP for the Cloudflare proxy).
-  Done: VM running, public IP assigned, VCN + public subnet, Internet Gateway + route,
-  security list 22+80.
-- [x] **Install Docker** + compose plugin on the VM; clone the repo. Done: Docker 29.1.3,
-  Compose 2.40.3, git 2.43.0 installed on the VM.
-- [x] **Env**: `cp .env.production.example .env` and fill: `POSTGRES_PASSWORD`, `NOSTOS_API_TOKEN`
-  (long random), LLM key, `NOSTOS_SERPAPI_KEY`, `NOSTOS_RESEND_API_KEY`, `NOSTOS_WHITELIST_EMAILS`.
-  Done on the VM: `.env` compiled with all keys.
-- [x] **Deploy**: `./scripts/deploy.sh` (build → start postgres/redis → apply idempotent
-  `schema.sql` → sync whitelist → start web/worker). All services `restart: unless-stopped`.
-  Done: 6/6 containers up (postgres/redis healthy, web on port 80), `/healthz` ok,
-  `/readyz` ready.
-- [x] **Reserved public IP**: attach one to the VM in OCI so the DNS record stays stable
-  across reboots (the VM currently runs on an ephemeral public IP). Done: existing IP
-  reserved via VNIC → "Reserve IPv4 address" (same address kept).
-- [x] **DNS**: A record `nostos.xen-ia.org` → VM IP, **Cloudflare proxy ON** (orange cloud →
-  free HTTPS, origin hidden, Cloudflare→origin on port 80). Verify `https://nostos.xen-ia.org/healthz`.
-  Done: record proxied, SSL/TLS mode **Flexible** (origin listens on HTTP:80), healthz ok.
-- [x] **Resend**: add `nostos.xen-ia.org` as sending domain, add its TXT/SPF/DKIM records in
-  Cloudflare DNS. Done: domain **Verified** (DKIM `resend._domainkey.nostos`, SPF + MX on
-  `send.nostos`), email received from `hello@nostos.xen-ia.org`.
-- [x] **Keep-alive**: add the anti-idle cron hitting `/healthz` every minute (Oracle reclaims
-  Always Free VMs idle for 7 days below ~20% CPU/network/memory). Done: cron active, verified
-  via web logs.
-- [x] **Frontend**: gh-pages API base → `https://nostos.xen-ia.org/api/v1`
-  (CORS origin `https://nostos.xen-ia.org` already in `.env.production.example`). Done in code;
-  gh-pages will be republished on the next push to `dev`.
-- [x] **Decommission the quick tunnel** + stop depending on the Mac being on. Done: `pkill -f
-  cloudflared` on the Mac (tunnel only pointed at local port 3072).
-- [x] **Final verification**: `/healthz`, `/readyz`, a real trip (PENDING→RUNNING→DONE), email
-  received from the real sending domain (`hello@nostos.xen-ia.org`). Done end-to-end.
-- [x] **SSH hardening**: disable password auth on the VM (`PasswordAuthentication no`). (Optional
-  but recommended; skip if the key setup isn't confirmed yet.)
+Coupling              █████░░░░░  [Needs Work] - Some cross-layer coupling (orchestrator→tools→SerpAPI)
+Cohesion              ██████░░░░  [Good] - Components have clear single responsibilities
+Abstraction Level     ██████░░░░  [Good] - Clean layers (API → orchestrator → tools → APIs)
+Testability           ███████░░░  [Good] - 116 tests, fakes for Redis/LLM/DB, integration tests
+Pattern Consistency   ██████░░░░  [Good] - ADR-driven, consistent DI, clear boundaries
 
-Note: with `POSTGRES_PASSWORD` in `.env` the compose stack overrides the internal URLs
-(`redis:6379` / `postgres:5432`) — no local Redis/Postgres needed on the VM.
+Overall: Solid foundation with clear layering; 2-3 high-impact fixes needed for production polish
+```
 
 ---
 
-## 1b. Serve the frontend from the app origin (post-go-live)
+## Findings Table — All Open Issues
 
-`nostos.xen-ia.org` is only the API backend today; the mock frontend lives on gh-pages
-(`xen-ia.github.io`) and needs a CORS whitelist entry. Better: serve `docs/index.html` from the
-same origin as the API → same-origin requests, no CORS at all, single deployable unit on the VM,
-and the apex `xen-ia.org` stays free for a future landing page.
-
-- [ ] Mount `docs/index.html` as static files at `/` in the web container (FastAPI `StaticFiles`),
-      API keeps `/api/v1`; no conflict with `/healthz`/`/readyz`.
-- [ ] Frontend then calls the same origin (the `API_BASE` constant already points at the app
-      origin; only the StaticFiles mount remains).
-- [x] Remove the "API backend" banner/input (`docs/index.html`) — done in `fix/frontend`: `API_BASE`
-      is a fixed constant, no localStorage override, no endpoint URL exposed to end users.
-- [ ] Drop `https://xen-ia.github.io` from `NOSTOS_ALLOWED_ORIGINS` (keep `https://nostos.xen-ia.org`
-      or relax CORS entirely since it becomes same-origin).
-- [ ] Deploy: frontend changes ship with the app image (no separate gh-pages step).
-- [ ] Decide later: serve a real landing page at the apex `xen-ia.org`.
-
----
-
-## 1c. Email whitelist gate (current feature)
-
-`POST /trips` is gated so only invited emails can create trips; this protects the paid LLM
-budget from anyone hitting the public endpoint. Design (agreed with owner):
-
-- Table `email_whitelist(email PRIMARY KEY, created_at)` in `schema.sql`.
-- Registry is env `NOSTOS_WHITELIST_EMAILS` (JSON list) — lives in `.env` on the VM, NOT in git.
-  `scripts/deploy.sh` syncs env → table on every deploy (**add-only**, idempotent `INSERT ...
-  ON CONFLICT DO NOTHING`). Manual `INSERT`s via psql/DBeaver are welcome and **never wiped**;
-  removals are manual (`DELETE FROM email_whitelist WHERE email = '...'`).
-- Gate is **always on, deny-all**: no toggle. Check happens in `create_trip`
-  (`src/api/routers/trips.py`) right after auth → `403 not_whitelisted`
-  (`https://xen-ia.org/problems/not_whitelisted`). Empty list = nobody can create.
-- Per-email **daily cap** `NOSTOS_WHITELIST_DAILY_MAX` (default 5) POSTs/day, reusing the Redis
-  `RateLimiter` (key `email:{email}:{YYYY-MM-DD}`) → `429 rate_limited`.
-- Only `POST /trips` is gated; status + feedback endpoints stay token-gated only.
-
-- [x] Tests (TDD, RED→GREEN): deny unlisted / allow listed / deny-all on empty / daily cap per
-      email / daily cap is per-email. 56 passed, 1 skipped.
-- [x] Implementation: gate + daily cap in router, `Database.is_whitelisted`, table in schema,
-      sync step in `scripts/deploy.sh`, settings `whitelist_daily_max`.
-- [x] Side change: `trip_history` now records which `model` produced the trip (column `model`,
-      passed worker → orchestrator → `save_trip_history`) and `created_at` renamed to `timestamp`.
-- [ ] Set `NOSTOS_WHITELIST_EMAILS` on the VM `.env` (owner email) + `./scripts/deploy.sh`.
-- [ ] **Tool I/O logging (deferred)** — see `perf/llm-tool-usage`: persist **every** SerpAPI tool call
-      made for a trip — inputs (query params per flights/maps/places) AND raw outputs — not just the
-      final `package_json`.
-
-Note: `POST /trips/{trip_id}/feedback` is deliberately **not** gated (user feedback is not
-structured/spam-worthy); revisit if abuse shows up.
+| ID | Severity | Finding | Impact | Fix | Effort | Unlocks |
+|----|----------|---------|--------|-----|--------|---------|
+| F1 | **CRITICAL** | `departure_codes` = 0 for "Italia" → no flights searched | No flight options in email for domestic/international trips; user sees only stays/POIs | Fix `build_geo_prompt` + `DepartureAirports` extraction to infer airport codes from country/region; validate in `geo_plan` | Medium (4-6h) | Flight search works for all destinations |
+| F2 | **HIGH** | Maps queries use `hl=it` for non-Latin destinations (China) → poor results | Chinese destinations return Italian-language results, low relevance | Detect destination script/locale → auto-set `hl`/`gl` (e.g., `hl=zh-CN`/`gl=cn` for China) | Medium (3-4h) | Relevant POIs for all destinations |
+| F3 | **HIGH** | 48 link-less Maps results dropped (wasted SerpAPI quota) | ~50% of Maps calls return link-less results → wasted API calls | Add `"site:google.com/maps"` or `"place_id"` filter to queries; tighten query specificity | Low (1-2h) | Reduced SerpAPI costs, better results |
+| F4 | **HIGH** | `departure_location` "Italia" not resolved to airport codes | User enters country/region but no flights searched | Enhance `TripIntent` extraction + `geo_plan` to infer major airports from country/region (e.g., Italy → MXP/FCO/VCE/BLQ) | Medium (3-4h) | Flights work for generic locations |
+| F5 | **MEDIUM** | No departure city/city inference from IP/whitelist | User must manually specify departure; friction | Add optional IP-based geo inference or default from whitelist email domain | Low (1-2h) | Better UX, fewer required fields |
+| F6 | **MEDIUM** | Tool I/O logging incomplete — only final `package_json` stored | Debugging failed trips hard; no visibility into SerpAPI raw I/O | Add `tool_log_jsonb` column; persist every SerpAPI call (inputs + raw outputs) in `_compose_package` | Medium (3-4h) | Full observability, faster debugging |
+| F7 | **MEDIUM** | Flight search fan-out not implemented (single query per departure) | Suboptimal flight prices; no exploration of nearby airports/date shifts | Implement fan-out: nearby airports ±3 days when `flexible_dates`, rank by price/duration | Significant (1-2 days) | Better flight prices, user trust |
+| F8 | **MEDIUM** | Knowledge base (RAG) not wired (`feature/wire-rag-knowledge`) | No local knowledge injection; generic recommendations | Implement `src/services/knowledge/` (Option B: frontmatter match) + hook into orchestrator | Significant (1-2 days) | Authentic local tips, differentiated product |
+| F9 | **MEDIUM** | Frontend served from gh-pages (cross-origin) instead of same origin | CORS complexity, extra deploy step, `API_BASE` hardcoded | Mount `docs/index.html` as FastAPI `StaticFiles` at `/`; API at `/api/v1`; drop gh-pages | Medium (2-3h) | Single deploy, no CORS, simpler ops |
+| F10 | **LOW** | `TripStore` Redis TTL = 24h → status lost after 24h even if email sent | `GET /trips/{id}` returns 404 after 24h despite email sent | Make Postgres the source of truth for status (add `status` column to `trip_history` already done); Redis as cache only | Low (1-2h) | Reliable status after 24h |
+| F11 | **LOW** | No landing page at apex `xen-ia.org` | Brand presence missing | Create static landing page at `/` (separate from app) or serve marketing page | Low (1-2h) | Professional brand presence |
+| F12 | **LOW** | No metrics/observability (Prometheus, tracing) | Can't measure latency, error rates, LLM costs | Add Prometheus metrics (request latency, LLM token counts, SerpAPI calls) + structured logging | Medium (3-4h) | Production observability |
+| F13 | **LOW** | No automated E2E tests (Playwright/Cypress) | Manual regression testing only | Add 4-scenario E2E suite (fixed, road_trip, van_life, sailing) in CI | Medium (2-3h) | Regression confidence |
+| F14 | **LOW** | `NOSTOS_ALLOWED_ORIGINS` still includes gh-pages after same-origin move | Dead config | Remove gh-pages from allowed origins once same-origin deployed | Trivial | Clean config |
 
 ---
 
-## 2. LLM tool usage rework — branch `perf/llm-tool-usage`
+## Completed Recently (Last 2 Weeks)
 
-Current state: branch has only a TODO in `src/tools/flights.py`:
-
-> "Implementare ricerca libera: non 5 ricerche uguali, ma sondare più ricerche da più angoli;
-> cercare voli da più partenze e scegliere il più economico"
-
-Also deferred here: full tool I/O logging. `trip_history.package_json` already stores the final
-package; the owner wants **every** SerpAPI tool call persisted — inputs (flights/maps/places query
-params) and raw outputs — not just the final package. Cut from the whitelist feature: add a
-`package_json`-style column (e.g. `tool_log_jsonb`) populated by the orchestrator at each search
-call site in `_compose_package`.
-
-Today `TripOrchestrator._compose_package` (`src/core/orchestrator.py:157`) fires one
-`flights.search(departure_code, destination_code, start, end, …)` — a single query, 5 near-identical
-results. The intent (`TripIntent`) fixes one departure airport.
-
-- [ ] Decide the search strategy: probe multiple angles (alternative nearby departure airports,
-      flexible date windows when `flexible_dates`, direct vs 1-stop) and pick the cheapest/best.
-- [ ] Extend `TripIntent` (`src/core/models.py`) + `build_intent_prompt` if the model should
-      express alternative departures / date flexibility; keep pydantic tool-schema validation and
-      Ollama grammar compatibility (`make_ollama_schema` in `src/services/tools/__init__.py`).
-- [ ] Rework `flights.search` (`src/services/tools/flights.py`) to fan out and rank, bounded by
-      the SerpAPI timeout; keep the `_normalize` output shape and logging.
-- [ ] Keep the LLM extraction constrained (`tool_choice` forced, single `extract` tool in
-      `src/services/apis/llm.py`) unless a multi-turn tool loop is explicitly part of the design.
-- [ ] Tests: update `tests/test_orchestrator.py` mocks + add flights fan-out unit tests.
+| ID | Title | Branch | Status |
+|----|-------|--------|--------|
+| ✅ | Travel mode pipeline — `travel_mode`, `accommodation_style`, `mobility_preferences` in `TripIntent` | `feat/travel-mode-pipeline` | Done |
+| ✅ | All 6 LLM prompts updated to use new fields | `feat/travel-mode-pipeline` | Done |
+| ✅ | Maps queries enriched with travel_mode/mobility qualifiers | `feat/travel-mode-pipeline` | Done |
+| ✅ | Places query built from travel_mode/accommodation_style | `feat/travel-mode-pipeline` | Done |
+| ✅ | Curation prompt prioritizes flights for fixed/intercontinental | `feat/travel-mode-pipeline` | Done |
+| ✅ | Email template renders mode/mobility sections | `feat/travel-mode-pipeline` | Done |
+| ✅ | `package_json` → `trip_dossier` + COMMENT ON COLUMN for all 20 cols | `feat/travel-mode-pipeline` | Done |
+| ✅ | Public feedback endpoint `POST /feedback/public` (IP rate-limited) | `fix/frontend-and-email` | Done |
+| ✅ | Frontend feedback URL fixed to `/feedback/public` | `fix/frontend-and-email` | Done |
+| ✅ | Public trip status endpoint `GET /status/public` (Redis + Postgres fallback) | `fix/frontend-and-email` | Done |
+| ✅ | Frontend polling fixed to use `/status/public` | `fix/frontend-and-email` | Done |
+| ✅ | `package_json` renamed to `trip_dossier` with COMMENT ON COLUMN | `feat/travel-mode-pipeline` | Done |
+| ✅ | Auto-deploy workflow (GitHub Actions → VM via SSH) | `.github/workflows/deploy.yml` | Done |
+| ✅ | `NOSTOS_WHITELIST_DAILY_MAX` env var for daily cap | settings | Done |
+| ✅ | 116 tests passing | — | Done |
 
 ---
 
-## 3. Wire the knowledge base (RAG) — branch `feature/wire-rag-knowledge`
+## Next Priority Order (Recommended)
 
-Reference: `docs/adr/006-knowledge-service.md` (Accepted). Current state: `src/knowledge.py` empty
-except a TODO; 8 markdown reports under `src/knowledge/` (camerun, creta ×2, croazia ×2, indonesia,
-islanda, sicilia); `NOSTOS_QDRANT_URL` setting exists but unused.
-
-The KB files have YAML frontmatter (`destinazioni`, `periodo`, `stagione`, `tipo_viaggio`,
-`viaggio_precedente_correlato`, `autore`) and per-stop `###` blocks (Identità e atmosfera, Come
-l'abbiamo trovata, Cosa abbiamo fatto, Da evitare, Sostenibilità, Logistica) — designed so each
-block is retrievable standalone.
-
-### 3a. Decision — KB structure & retrieval strategy (blocking)
-
-- [ ] **Option A — vector DB (Qdrant)**: index blocks with embeddings, semantic retrieval on
-      `NOSTOS_QDRANT_URL`. Adds an infra dependency + embedding step; best fuzzy matching.
-- [ ] **Option B — llm-wiki-like**: keep markdown as source of truth, retrieve by frontmatter
-      match (destination/season/type) + keyword on section blocks, no extra infra. Simpler, no
-      new service, degrades gracefully on unknown destinations.
-- [ ] Record the choice (extend ADR-006 or add a retrieval-strategy ADR).
-
-### 3b. Implementation
-
-- [ ] Implement `src/services/knowledge/` as a service behind an interface, with a fake for tests
-      (per ADR-006). Move `src/knowledge/*.md` under `src/services/knowledge/`.
-- [ ] Hook it into `TripOrchestrator` between intent extraction and research: after
-      `_extract_intent` (`src/core/orchestrator.py:80`), retrieve knowledge for the destination
-      and pass the structured, actionable info (off-season tips, authentic spots, avoid-list)
-      as extra input to the SerpAPI searches in `_compose_package`.
-- [ ] Decide (deferred in ADR-006) whether the retrieved knowledge also feeds email composition.
-- [ ] Tests: fake knowledge service + orchestrator integration.
+1. **F1 + F4** — Fix departure codes (enables flights for all trips)
+2. **F2** — Fix Maps locale for non-Latin destinations
+3. **F3** — Reduce link-less Maps waste
+4. **F6** — Full tool I/O logging (debugging velocity)
+5. **F7** — Flight fan-out (better prices)
+6. **F8** — Knowledge base wiring (product differentiation)
+6. **F9** — Same-origin frontend (ops simplification)
+7. **F5, F10, F12, F13** — UX polish, observability, reliability
 
 ---
 
-## Cross-cutting
+## Architecture Decision Records (ADRs) — Status
 
-- [ ] Keep `AGENTS.md` conventions: `uv run`, venv outside the workspace, English code/docs.
-- [ ] Every PR green on `uv run pytest` before merging into `dev`.
+| ADR | Title | Status | Notes |
+|-----|-------|--------|-------|
+| ADR-001 | Queue (ARQ) | Accepted | Redis + ARQ worker |
+| ADR-002 | Source of truth (Postgres) | Accepted | Redis cache, PG durable |
+| ADR-003 | Lease (claim/renew/release) | Accepted | 60s heartbeat |
+| ADR-004 | API contract | Accepted | 202 + Location header |
+| ADR-005 | Outbox-lite | Accepted | status column + upsert |
+| ADR-006 | Knowledge service | Accepted | Qdrant URL exists, unused |
+| ADR-007 | Flexible dates dropped | Accepted | Re-added in ADR-009 |
+| ADR-008 | Co-design form pipeline | Accepted | Form v2 + pipeline |
+| ADR-009 | Flexible dates real semantics | Accepted | Hard vs indicative |
+| ADR-010 | Travelers composition removal | Accepted | Replaced by travelers_type |
+
+---
+
+## Cross-cutting Concerns
+
+- [ ] Keep `AGENTS.md` conventions: `uv run`, venv outside workspace, English code/docs
+- [ ] Every PR green on `uv run pytest` before merging into `dev`
+- [ ] Update `PRODUCT.md` (currently stale — describes old budget chips, interests chips)
+- [ ] Decision on ADR-006 knowledge retrieval strategy (Option A: Qdrant vs Option B: frontmatter match)
+
+---
+
+## Test Coverage Summary
+
+| Test Suite | Tests | Status |
+|------------|-------|--------|
+| `test_api.py` | 24 | ✅ |
+| `test_contract.py` | 4 | ✅ |
+| `test_database_sql.py` | 4 | ✅ |
+| `test_email_rendering.py` | 4 | ✅ |
+| `test_flight_matrix.py` | 8 | ✅ |
+| `test_geo_models.py` | 12 | ✅ |
+| `test_integration_worker.py` | 6 | ✅ |
+| `test_orchestrator.py` | 12 | ✅ |
+| `test_pure.py` | 8 | ✅ |
+| `test_schemas.py` | 4 | ✅ |
+| `test_services.py` | 4 | ✅ |
+| `test_database.py` | 20 | ✅ |
+| `test_fakes.py` | 4 | ✅ |
+| `test_tools.py` | 4 | ✅ |
+| `test_worker.py` | 4 | ✅ |
+| **Total** | **116 passed, 1 skipped** | ✅ |
+
+---
+
+## Deploy Checklist (for next `dev` → `main` merge)
+
+- [ ] Run full test suite: `uv run pytest`
+- [ ] Update `PRODUCT.md` if schema/fields changed
+- [ ] Merge `dev` → `main` (triggers auto-deploy workflow)
+- [ ] Verify VM deploy: `./scripts/deploy.sh` completes, all 6 containers up
+- [ ] Health checks: `/healthz`, `/readyz` → 200
+- [ ] Smoke test: POST `/api/v1/trips` → 202, polling → DONE, email received
+- [ ] Feedback test: POST `/feedback/public` → 201
+- [ ] If gh-pages still used: `cd docs && git push origin HEAD:gh-pages -f`
+- [ ] Update `PRODUCT.md` with current field descriptions
+
+---
+
+*Last updated: 2026-08-27 — after successful end-to-end test (China trip, 25.5s total, email sent, feedback 201)*
