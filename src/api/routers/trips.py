@@ -135,9 +135,10 @@ async def submit_feedback_public(
 async def get_trip_status_public(
     trip_id: str,
     request: Request,
+    store: TripStore = Depends(get_trip_store),
     db=Depends(get_database),
 ):
-    """Public trip status endpoint (no auth, no PII). Returns only status, email_subject, email_body, error_message from Postgres."""
+    """Public trip status endpoint (no auth, no PII). Reads status from Redis (real-time), enriches with email fields from Postgres when done/error."""
     settings: Settings = request.app.state.settings
     public_limiter = RateLimiter(
         request.app.state.redis,
@@ -146,14 +147,27 @@ async def get_trip_status_public(
     )
     await public_limiter.check(rate_limit_key(request))
 
-    trip = await db.get_trip_history(trip_id)
-    if not trip:
+    # 1. Status real-time da Redis (sempre disponibile)
+    try:
+        trip = await store.get(trip_id)
+    except TripNotFoundError:
         raise APIError(ErrorCode.TRIP_NOT_FOUND, "Trip not found or expired", 404)
 
+    # 2. Arricchisci da Postgres solo se done/error (email_subject/body/error_message)
+    email_subject = None
+    email_body = None
+    error_message = None
+    if trip.status in ("done", "error"):
+        history = await db.get_trip_history(trip_id)
+        if history:
+            email_subject = history.get("email_subject")
+            email_body = history.get("email_body")
+            error_message = history.get("error_message")
+
     return TripStatusPublic(
-        trip_id=trip["id"],
-        status=trip["status"],
-        email_subject=trip.get("email_subject") if trip["status"] == "done" else None,
-        email_body=trip.get("email_body") if trip["status"] == "done" else None,
-        error_message=trip.get("error_message") if trip["status"] == "error" else None,
+        trip_id=trip.id,
+        status=trip.status,
+        email_subject=email_subject,
+        email_body=email_body,
+        error_message=error_message,
     )
