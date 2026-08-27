@@ -135,9 +135,9 @@ async def submit_feedback_public(
 async def get_trip_status_public(
     trip_id: str,
     request: Request,
-    store: TripStore = Depends(get_trip_store),
+    db=Depends(get_database),
 ):
-    """Public trip status endpoint (no auth, no PII). Returns only status, email_subject, email_body, error_message."""
+    """Public trip status endpoint (no auth, no PII). Returns only status, email_subject, email_body, error_message from Postgres."""
     settings: Settings = request.app.state.settings
     public_limiter = RateLimiter(
         request.app.state.redis,
@@ -146,15 +146,14 @@ async def get_trip_status_public(
     )
     await public_limiter.check(rate_limit_key(request))
 
-    try:
-        trip = await store.get(trip_id)
-    except TripNotFoundError:
+    trip = await db.get_trip_history(trip_id)
+    if not trip:
         raise APIError(ErrorCode.TRIP_NOT_FOUND, "Trip not found or expired", 404)
 
     return TripStatusPublic(
-        trip_id=trip.id,
-        status=trip.status,
-        email_subject=trip.email_subject if trip.status == "done" else None,
-        email_body=trip.email_body if trip.status == "done" else None,
-        error_message=trip.error_message if trip.status == "error" else None,
+        trip_id=trip["id"],
+        status=trip["status"],
+        email_subject=trip.get("email_subject") if trip["status"] == "done" else None,
+        email_body=trip.get("email_body") if trip["status"] == "done" else None,
+        error_message=trip.get("error_message") if trip["status"] == "error" else None,
     )
