@@ -638,13 +638,11 @@ class TripOrchestrator:
             ]
 
         # Only include the winning flight link (not all probed combinations)
-        winning_flight_link = None
-        if corpus.get("flights"):
-            winning_flight_link = corpus["flights"][0].get("link")
-
         source_links = []
-        if winning_flight_link:
-            source_links.append(winning_flight_link)
+        if corpus.get("flights"):
+            flight = corpus["flights"][0]
+            if flight.get("link"):
+                source_links.append({"name": flight.get("airline", "Volo selezionato"), "link": flight["link"]})
 
         return {
             "groups": [

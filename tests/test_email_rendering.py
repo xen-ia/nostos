@@ -20,7 +20,7 @@ CONTENT = {
             ("Dove stare", []),
             ("Cosa fare", [{"name": "POI due", "link": "https://m.example/2"}]),
         ],
-        "source_links": ["https://gf.example"],
+        "source_links": [{"name": "Volo selezionato", "link": "https://gf.example"}],
     },
 }
 
@@ -36,6 +36,7 @@ def test_appendix_details_present_with_all_links():
     assert "<details" in html and "</details>" in html
     assert "https://f.example/2" in html and "https://m.example/2" in html
     assert "https://gf.example" in html
+    assert "Volo selezionato" in html
 
 
 def test_no_quota_heading():

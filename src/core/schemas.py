@@ -64,5 +64,14 @@ class FeedbackResponse(FeedbackRequest):
     created_at: str
 
 
+class TripStatusPublic(BaseModel):
+    """Public trip status — no PII (email, free_text, dates, etc.)."""
+    trip_id: str
+    status: TripStatus
+    email_subject: Optional[str] = None
+    email_body: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
