@@ -46,6 +46,12 @@ class TripCreateRequest(BaseModel):
             raise ValueError("end_date must be on or after start_date")
         return self
 
+    @model_validator(mode="after")
+    def _require_brief(self) -> "TripCreateRequest":
+        if not (self.destination or "").strip() and not (self.free_text or "").strip():
+            raise ValueError("destination or free_text is required: tell us where or what you dream of")
+        return self
+
 
 class TripResponse(TripCreateRequest):
     id: str

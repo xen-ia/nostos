@@ -187,7 +187,7 @@ def test_whitelist_empty_denies_all():
     db = FakeDatabase(whitelist=set())
     app, *_ = make_app(db=db)
     with TestClient(app) as client:
-        resp = client.post("/api/v1/trips", json={"email": "test@example.com"})
+        resp = client.post("/api/v1/trips", json={"email": "test@example.com", "destination": "Tokyo"})
     assert resp.status_code == 403
     assert resp.json()["type"].endswith("/not_whitelisted")
 
@@ -218,9 +218,9 @@ def test_whitelist_daily_limit_separate_per_email():
 def test_rate_limit_exceeded():
     app, *_ = make_app(rate_limit_max=2, window=60)
     with TestClient(app) as client:
-        r1 = client.post("/api/v1/trips", json={"email": "a@b.com"})
-        r2 = client.post("/api/v1/trips", json={"email": "a@b.com"})
-        r3 = client.post("/api/v1/trips", json={"email": "a@b.com"})
+        r1 = client.post("/api/v1/trips", json={"email": "a@b.com", "destination": "Tokyo"})
+        r2 = client.post("/api/v1/trips", json={"email": "a@b.com", "destination": "Tokyo"})
+        r3 = client.post("/api/v1/trips", json={"email": "a@b.com", "destination": "Tokyo"})
     assert r1.status_code == 202
     assert r2.status_code == 202
     assert r3.status_code == 429
@@ -315,3 +315,22 @@ def test_feedback_public_without_token_allowed():
             json={"rating": 4, "comment": "ok"},
         )
     assert resp.status_code == 201
+
+
+def test_empty_brief_rejected():
+    app, *_ = make_app()
+    with TestClient(app) as client:
+        missing = client.post("/api/v1/trips", json={"email": "t@t.example"})
+        blank = client.post(
+            "/api/v1/trips",
+            json={"email": "t@t.example", "destination": "   ", "free_text": "  "},
+        )
+    assert missing.status_code == 422
+    assert blank.status_code == 422
+
+
+def test_free_text_only_brief_accepted():
+    app, *_ = make_app()
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/trips", json={"email": "t@t.example", "free_text": "sogno il mare"})
+    assert resp.status_code == 202

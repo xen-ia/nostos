@@ -34,6 +34,12 @@ def build_intent_prompt(trip: TripResponse) -> str:
     - travel_mode: one of 'fixed', 'road_trip', 'van_life', 'sailing', 'mixed' — deduce from how the user describes moving and sleeping in loco
     - accommodation_style: one of 'homestay', 'hotel', 'van', 'camping', 'boat', 'mixed' — must be consistent with travel_mode
     - mobility_preferences: list of means explicitly mentioned or strongly implied (auto, moto, bici, barca, trasporti_pubblici, a_piedi)
+
+    FLIGHTS (decidi come un ricercatore viaggi esperto — "come arrivo" NON è "come mi muovo in loco"):
+    - needs_flights: true se serve un volo per ARRIVARE (paese diverso dalla partenza, isole,
+      frasi come 'noleggio quando arrivo'/'noleggio un van lì', lunghe distanze); false solo se
+      il viaggio resta chiaramente in zona. Nel dubbio con paesi diversi → true.
+    - flight_rationale: una frase in italiano con il perché.
     """
 
 
@@ -76,6 +82,11 @@ def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: s
     that dig INTO the anchors along the brief's interests, style, travel mode and mobility —
     e.g. specific neighborhoods, niche venues, quiet alternatives, van-friendly spots,
     ports for sailing, campsites along routes. Each query must derive from an anchor.
+    MODE GUIDANCE (apply lightly — at most ONE short qualifier per query):
+    - van_life: prefer a trailing qualifier like 'campervan parking' or 'campsite';
+    - road_trip: prefer 'scenic drive stops' or 'viewpoint parking';
+    - sailing: prefer 'marina' or 'anchorage'.
+    Write clean natural queries first; the qualifier is a hint, not a suffix to staple.
     """
 
 
@@ -132,6 +143,8 @@ def build_geo_prompt(trip: TripResponse, intent: TripIntent) -> str:
     PART 2 — DepartureAirports (departure expansion):
     - If the departure location is a city, region or country, list 1..4 candidate IATA codes
       for its main international airports (max 4).
+    - Include nearby secondary and low-cost airports besides the main hubs
+      (e.g. North Italy → MXP plus BGY and VRN), still max 4 codes total, never invented.
     - If the departure location is not placeable, NEVER invent codes: return an empty list.
 
     Do not invent airport codes that do not exist.

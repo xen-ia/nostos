@@ -4,6 +4,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from src.services.apis.llm import LLMClient
 from src.services.trip_store import TripResponse, TripStatus, TripStore
@@ -45,57 +46,29 @@ MAX_FLIGHT_PROBES = 8
 MAX_DEPARTURE_AIRPORTS = 4
 MAX_RESOLVED_DESTINATIONS = 2
 FLEXIBLE_WINDOW_SHIFT_DAYS = 7
-FLIGHT_BLOCKING_TRAVEL_MODES = frozenset({"road_trip", "van_life", "sailing"})
-
-_CONTINENT_MAP = {
-    "italy": "europe",
-    "italia": "europe",
-    "europe": "europe",
-    "francia": "europe",
-    "france": "europe",
-    "spagna": "europe",
-    "spain": "europe",
-    "germania": "europe",
-    "germany": "europe",
-    "uk": "europe",
-    "patagonia": "south_america",
-    "argentina": "south_america",
-    "cile": "south_america",
-    "chile": "south_america",
-    "brasile": "south_america",
-    "brazil": "south_america",
-    "peru": "south_america",
-    "perù": "south_america",
-    "usa": "north_america",
-    "canada": "north_america",
-    "messico": "north_america",
-    "mexico": "north_america",
-    "giappone": "asia",
-    "japan": "asia",
-    "thailand": "asia",
-    "thailandia": "asia",
-    "cina": "asia",
-    "china": "asia",
-    "india": "asia",
-    "australia": "oceania",
-    "new zealand": "oceania",
-    "nuova zelanda": "oceania",
-}
-
-
-def _continent(place: str | None) -> str | None:
-    if not place:
-        return None
-    key = place.lower().strip()
-    for k, v in _CONTINENT_MAP.items():
-        if k in key:
-            return v
-    return None
 
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
 CTA = "Se questa direzione ti somiglia, rispondi a questa email: costruiamo insieme il resto del viaggio."
+
+JUNK_DOMAINS = frozenset({
+    "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
+    "youtube.com", "youtu.be",
+})
+
+
+def _is_junk_link(link: str | None) -> bool:
+    """True for social/video links that must never reach an email."""
+    if not link:
+        return False
+    try:
+        host = urlparse(link).netloc.lower().split(":")[0]
+    except ValueError:
+        return False
+    return host == "x.com" or any(
+        host == d or host.endswith("." + d) for d in JUNK_DOMAINS if d != "x.com"
+    )
 
 
 def _valid_iata(codes) -> list[str]:
@@ -242,17 +215,31 @@ class TripOrchestrator:
 
     @staticmethod
     def _compose_body_text(email_content: dict) -> str:
-        lines = [email_content["opening"], "", email_content["understanding"], "", "Ecco i punti di partenza:"]
-        for i, item in enumerate(email_content["resources"], 1):
-            parts = [f"{i}. {item['name']}"]
+        lines = [email_content["opening"], "", email_content["understanding"], ""]
+        smap = email_content.get("sections_map", {})
+        flight_links = set(smap.get("flights", []))
+        resources = email_content.get("resources", [])
+        flight_items = [r for r in resources if r.get("link") in flight_links]
+        if flight_items:
+            lines.append("Come arrivare:")
+            first = flight_items[0]
+            flight_line = first["name"]
+            if first.get("price"):
+                flight_line += f" — {first['price']}"
+            lines.append(flight_line)
+            lines.append(first["link"])
+            lines.append("")
+        lines.append("Punti di partenza:")
+        for i, item in enumerate(resources, 1):
+            entry = f"{i}. {item['name']}"
             if item.get("price"):
-                parts.append(f"   {item['price']}")
+                entry += f" — {item['price']}"
+            lines.append(entry)
             if item.get("description"):
-                parts.append(f"   {item['description']}")
-            parts.append(f"   {item['link']}")
-            lines.append("\n".join(parts))
+                lines.append(f"   {item['description']}")
+            lines.append(f"   {item['link']}")
 
-        # Travel mode section for text version
+        # Travel box one-liner mirroring the HTML hierarchy
         travel_mode = email_content.get("travel_mode")
         mobility = email_content.get("mobility")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
@@ -266,26 +253,25 @@ class TripOrchestrator:
             "van_life": "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri selezionati lungo il percorso.",
             "sailing": "Il viaggio si svolge in barca: porti di imbarco, marine per il noleggio, rotte costiere con ancoraggi sicuri.",
         }
+        lines.append("")
         if travel_mode_lower in mode_labels:
-            lines.append("")
-            lines.append(mode_labels[travel_mode_lower] + ":")
-            lines.append(mode_descriptions[travel_mode_lower])
+            travel_line = f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}"
             if mobility:
-                lines.append(f"Mezzi: {', '.join(mobility)}")
+                travel_line += f" Mezzi: {', '.join(mobility)}"
+            lines.append(travel_line)
         elif mobility:
-            lines.append("")
-            lines.append(f"Come spostarti: {', '.join(mobility)}")
+            lines.append(f"Mezzi: {', '.join(mobility)}")
 
         appendix = email_content.get("appendix", {})
         if appendix:
-            lines.append("")
-            lines.append("Fonti esplorate:")
-            for label, items in appendix.get("groups", []):
-                named = [i for i in items if i.get("link")]
-                if named:
-                    lines.append(f"{label}: " + "; ".join(f"{i.get('name') or i['link']} {i['link']}" for i in named))
-            for url in appendix.get("source_links", []):
-                lines.append(f"Ricerca voli: {url}")
+            urls: list[str] = []
+            for _label, items in appendix.get("groups", []):
+                urls.extend(i["link"] for i in items if i.get("link"))
+            urls.extend(u["link"] for u in appendix.get("source_links", []) if isinstance(u, dict) and u.get("link"))
+            if urls:
+                lines.append("")
+                lines.append("Fonti:")
+                lines.extend(urls)
         lines.append("")
         lines.append(email_content["cta"])
         lines.append("")
@@ -387,32 +373,6 @@ class TripOrchestrator:
         tool_calls.append({"engine": engine, "params": params, "result_count": len(results)})
         logger.info("%s: %d results (%s)", engine, len(results), params.get("q") or params.get("departure_id"))
 
-    def _enrich_queries_for_mode(self, queries: list[str], intent: TripIntent) -> list[str]:
-        """Add travel_mode/mobility context to maps queries for more targeted results."""
-        if not queries:
-            return []
-        tm = (intent.travel_mode or "").lower()
-        mobility = intent.mobility_preferences or []
-        enriched = []
-        for q in queries:
-            base = q
-            # Add mode-specific qualifiers
-            if tm == "road_trip":
-                base += " percorso strada panoramico soste"
-            elif tm == "van_life":
-                base += " area sosta camper campeggio libero van"
-            elif tm == "sailing":
-                base += " porto marina noleggio barca ormeggio"
-            # Add mobility qualifiers
-            if "auto" in mobility:
-                base += " accessibile auto parcheggio"
-            if "moto" in mobility:
-                base += " accessibile moto"
-            if "barca" in mobility:
-                base += " accessibile barca approdo"
-            enriched.append(base)
-        return enriched
-
     def _build_places_query(self, destination: str | None, intent: TripIntent, trip: TripResponse) -> str:
         """Build a targeted accommodation query based on travel_mode and accommodation_style."""
         if not destination:
@@ -464,39 +424,26 @@ class TripOrchestrator:
             self._log_call(tool_calls, engine, params, res)
             return res
 
-        # Enrich targeted queries with travel_mode/mobility context for maps
-        enriched_queries = self._enrich_queries_for_mode(targeted_queries, intent)
+        # Targeted queries go to maps verbatim: the model already writes mode-aware queries.
         maps_results = await asyncio.gather(*(
             guarded(maps.research(q, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                     "google_maps", {"q": q})
-            for q in enriched_queries
+            for q in targeted_queries
         ))
 
-        # Flight matrix (spec C3): gates first, then capped prioritized probes.
-        # Use intent.travel_mode (LLM-extracted, semantic); fallback to form trip.travel_mode for compat
-        effective_travel_mode = (intent.travel_mode or "").lower()
-        if not effective_travel_mode:
-            # Map legacy form values to new semantics
-            legacy = (trip.travel_mode or "").lower()
-            if legacy in {"auto", "van"}:
-                effective_travel_mode = "road_trip" if legacy == "auto" else "van_life"
-            elif legacy == "treno":
-                effective_travel_mode = "road_trip"  # treno = fixed base, but no flights needed
-        dep_cont = _continent(trip.departure_location)
-        dest_cont = _continent(destination or intent.destination or trip.destination or "")
-        is_intercontinental = dep_cont and dest_cont and dep_cont != dest_cont
-        if effective_travel_mode in FLIGHT_BLOCKING_TRAVEL_MODES and not is_intercontinental:
-            skipped_reason = f"travel_mode:{effective_travel_mode}"
+        # Flight matrix: the LLM decides per trip (intent.needs_flights); code only executes.
+        # Legacy form travel_mode is NOT consulted: a van rented on arrival still needs a flight.
+        departures = departure_codes or _valid_iata([intent.departure_airport_code])
+        arrivals = (
+            _valid_iata([p.airport_code for p in resolved.destinations])
+            or _valid_iata([intent.destination_airport_code])
+        )
+        if not departures or not arrivals:
+            skipped_reason = "no_airports"
+        elif not intent.needs_flights:
+            skipped_reason = "no_flights_needed"
         else:
-            departures = departure_codes or _valid_iata([intent.departure_airport_code])
-            arrivals = (
-                _valid_iata([p.airport_code for p in resolved.destinations])
-                or _valid_iata([intent.destination_airport_code])
-            )
-            if not departures or not arrivals:
-                skipped_reason = "no_airports"
-            else:
-                skipped_reason = None
+            skipped_reason = None
 
         flight_windows = self._flight_windows(trip, windows)
 
@@ -541,9 +488,23 @@ class TripOrchestrator:
                           timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
             "google_hotels", {"q": places_query, "check_in_date": check_in, "check_out_date": check_out},
         )
+        if not stays:
+            logger.info("google_hotels: empty for mode query, retrying generic hotels in %s", destination)
+            retry_query = f"hotels in {destination}" if destination else "hotels"
+            stays = await guarded(
+                places.search(destination=destination, query=retry_query,
+                              check_in_date=check_in, check_out_date=check_out,
+                              timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+                "google_hotels", {"q": retry_query, "check_in_date": check_in,
+                                  "check_out_date": check_out},
+            )
 
         maps_items = [*anchors, *(i for lst in maps_results for i in lst)]
-        linked_maps = [i for i in maps_items if i.get("link")]
+        linked_maps = [i for i in maps_items if i.get("link") and not _is_junk_link(i.get("link"))]
+        dropped_junk = [i.get("name") for i in maps_items
+                        if i.get("link") and _is_junk_link(i.get("link"))]
+        if dropped_junk:
+            logger.warning("maps corpus: dropped %d junk-domain entries: %s", len(dropped_junk), dropped_junk)
         linkless_names = [i.get("name") for i in maps_items if not i.get("link")]
         if linkless_names:
             logger.warning("maps corpus: dropped %d link-less entries: %s", len(linkless_names), linkless_names)
@@ -557,6 +518,7 @@ class TripOrchestrator:
             "resolved": [p.model_dump() for p in resolved.destinations],
             "departure_codes": departure_codes or _valid_iata([intent.departure_airport_code]),
             "skipped_flights_reason": skipped_reason,
+            "flight_rationale": intent.flight_rationale,
             "resolve_rationale": resolved.rationale,
         }
         if not any(corpus.values()):
@@ -656,11 +618,15 @@ class TripOrchestrator:
         content["cta"] = CTA
         from src.core.feedback_token import make_token
         from src.settings import get_settings
+        import re
 
         settings = get_settings()
         base = getattr(settings, "feedback_base_url", "https://xen-ia.github.io/nostos")
         token = make_token(self._trip_id, settings.api_token or "dev-secret", ttl_days=settings.feedback_token_ttl_days)
         content["feedback_link"] = f"{base}/feedback.html?trip_id={self._trip_id}&token={token}"
+        from_addr = (getattr(settings, "email_from_address", "") or "").strip()
+        addr_match = re.search(r"<([^>]+)>", from_addr)
+        content["reply_to"] = addr_match.group(1).strip() if addr_match else from_addr
         content["sections_map"] = {
             "flights": [r["link"] for r in curated["flights"] if r.get("link")],
             "places": [r["link"] for r in curated["places"] if r.get("link")],
@@ -690,21 +656,33 @@ class TripOrchestrator:
             return [
                 {"name": it.get("name") or it.get("airline"), "link": it.get("link")}
                 for it in items
+                if it.get("link") and not _is_junk_link(it.get("link"))
             ]
+
+        # Cap the total links across groups at 5, keeping group order
+        # Voli → Dove stare → Cosa fare; drop empty groups.
+        raw_groups = [
+            ("Voli", brief_items(corpus["flights"])),
+            ("Dove stare", brief_items(corpus["places"])),
+            ("Cosa fare", brief_items(corpus["maps"])),
+        ]
+        groups: list[tuple[str, list[dict]]] = []
+        remaining = 5
+        for label, items in raw_groups:
+            take = items[:remaining]
+            remaining -= len(take)
+            if take:
+                groups.append((label, take))
 
         # Only include the winning flight link (not all probed combinations)
         source_links = []
         if corpus.get("flights"):
             flight = corpus["flights"][0]
-            if flight.get("link"):
+            if flight.get("link") and not _is_junk_link(flight.get("link")):
                 source_links.append({"name": flight.get("airline", "Volo selezionato"), "link": flight["link"]})
 
         return {
-            "groups": [
-                ("Voli", brief_items(corpus["flights"])),
-                ("Dove stare", brief_items(corpus["places"])),
-                ("Cosa fare", brief_items(corpus["maps"])),
-            ],
+            "groups": groups,
             "source_links": source_links,
         }
 

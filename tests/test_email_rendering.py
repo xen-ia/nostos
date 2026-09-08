@@ -28,12 +28,12 @@ CONTENT = {
 def test_empty_group_not_rendered_but_nonempty_is():
     html = build_html_email(CONTENT)
     assert "Voli" in html and "Cosa fare" in html
-    assert "Dove stare" not in html.split("<details")[0]  # absent among curated cards
+    assert "Dove stare" not in html  # absent among curated cards and capped sources
 
 
-def test_appendix_details_present_with_all_links():
+def test_appendix_sources_present_with_all_links():
     html = build_html_email(CONTENT)
-    assert "<details" in html and "</details>" in html
+    assert "<details" not in html and "</details>" not in html
     assert "https://f.example/2" in html and "https://m.example/2" in html
     assert "https://gf.example" in html
     assert "Volo selezionato" in html

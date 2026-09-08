@@ -62,6 +62,19 @@ class TripIntent(BaseModel):
             "Se 'vorrei noleggiare una barca a vela' → ['barca']. Estrapolare dal free_text."
         ),
     )
+    needs_flights: bool = Field(
+        default=True,
+        description=(
+            "True se il viaggiatore deve raggiungere la destinazione con un volo: "
+            "paese diverso dalla partenza, isole, 'noleggio quando arrivo', lunghe distanze. "
+            "False solo quando è chiaro che resta in zona (stessa regione, on the road da casa). "
+            "Nel dubbio con paesi diversi → True."
+        ),
+    )
+    flight_rationale: str = Field(
+        default="",
+        description="In italiano: perché i voli servono oppure no per questo viaggio",
+    )
 
 
 class EmailResource(BaseModel):
