@@ -32,7 +32,7 @@ def test_build_html_email_includes_escaped_parts():
         "opening": 'Hello "world"',
         "understanding": "<i>ok</i>",
         "resources": [{"name": "X", "description": "d", "price": "p", "link": "https://x.com"}],
-        "cta": "Reply",
+        "cta": "A presto",
         "honest_note": "Auto",
     }
     html = build_html_email(content)
@@ -102,7 +102,7 @@ def test_compose_body_text_formatting():
             {"name": "Volo", "price": "320 EUR", "description": "Nonstop", "link": "https://x.com"},
             {"name": "Hotel", "link": "https://y.com"},
         ],
-        "cta": "Rispondi",
+        "cta": "Facci sapere",
         "honest_note": "Auto",
     }
     text = TripOrchestrator._compose_body_text(content)

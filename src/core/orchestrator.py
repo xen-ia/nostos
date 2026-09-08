@@ -1,10 +1,11 @@
 """TripOrchestrator: end-to-end trip pipeline (intent -> research -> email)."""
 import asyncio
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 from src.services.apis.llm import LLMClient
 from src.services.trip_store import TripResponse, TripStatus, TripStore
@@ -50,12 +51,36 @@ FLEXIBLE_WINDOW_SHIFT_DAYS = 7
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Se questa direzione ti somiglia, rispondi a questa email: costruiamo insieme il resto del viaggio."
+CTA = "Com'è andata? Lasciaci un feedback."
 
 JUNK_DOMAINS = frozenset({
     "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
     "youtube.com", "youtu.be",
 })
+
+#: Numbered-corpus IDs (e.g. [F0], [M12], [P3]) the LLM echoes into EmailContent
+#: text fields. Stripped post-validation in _compose_email; the ID plus at most
+#: one adjacent space goes, preferring the trailing one ("[F0] X" -> "X").
+_BRACKET_ID_RE = re.compile(r"\[(?:F|M|P)\d+\] ?| ?\[(?:F|M|P)\d+\]")
+
+
+def _strip_bracket_id(text: str | None) -> str:
+    """Remove leaked corpus IDs from a single text field."""
+    return _BRACKET_ID_RE.sub("", text or "").strip()
+
+
+def strip_bracket_ids(content: dict) -> dict:
+    """Remove leaked corpus IDs from opening/understanding and every resource
+    name/description/price. Runs after validation (IDs never affect grounding)
+    and before rendering, so both HTML and text builders receive clean copy."""
+    for field in ("opening", "understanding"):
+        if content.get(field):
+            content[field] = _strip_bracket_id(content[field])
+    for resource in content.get("resources", []):
+        for field in ("name", "description", "price"):
+            if resource.get(field):
+                resource[field] = _strip_bracket_id(resource[field])
+    return content
 
 
 def _is_junk_link(link: str | None) -> bool:
@@ -69,6 +94,14 @@ def _is_junk_link(link: str | None) -> bool:
     return host == "x.com" or any(
         host == d or host.endswith("." + d) for d in JUNK_DOMAINS if d != "x.com"
     )
+
+
+def _maps_search_link(name: str | None, address: str | None) -> str | None:
+    """Universal Google Maps link for a link-less place. None when no name."""
+    if not (name or "").strip():
+        return None
+    query = name.strip() + (f" {address.strip()}" if (address or "").strip() else "")
+    return "https://www.google.com/maps/search/?api=1&query=" + quote_plus(query)
 
 
 def _valid_iata(codes) -> list[str]:
@@ -220,6 +253,7 @@ class TripOrchestrator:
         flight_links = set(smap.get("flights", []))
         resources = email_content.get("resources", [])
         flight_items = [r for r in resources if r.get("link") in flight_links]
+        hero_link = next((r["link"] for r in flight_items if r.get("link")), None)
         if flight_items:
             lines.append("Come arrivare:")
             first = flight_items[0]
@@ -230,7 +264,8 @@ class TripOrchestrator:
             lines.append(first["link"])
             lines.append("")
         lines.append("Punti di partenza:")
-        for i, item in enumerate(resources, 1):
+        listed = [r for r in resources if r.get("link") != hero_link] if hero_link else resources
+        for i, item in enumerate(listed, 1):
             entry = f"{i}. {item['name']}"
             if item.get("price"):
                 entry += f" — {item['price']}"
@@ -239,9 +274,9 @@ class TripOrchestrator:
                 lines.append(f"   {item['description']}")
             lines.append(f"   {item['link']}")
 
-        # Travel box one-liner mirroring the HTML hierarchy
+        # Travel box one-liner mirroring the HTML hierarchy (no Mezzi line:
+        # mobility info lives in the LLM prose, a bare vehicle list makes no sense).
         travel_mode = email_content.get("travel_mode")
-        mobility = email_content.get("mobility")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
         mode_labels = {
             "road_trip": "Come muoversi in loco",
@@ -255,19 +290,25 @@ class TripOrchestrator:
         }
         lines.append("")
         if travel_mode_lower in mode_labels:
-            travel_line = f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}"
-            if mobility:
-                travel_line += f" Mezzi: {', '.join(mobility)}"
-            lines.append(travel_line)
-        elif mobility:
-            lines.append(f"Mezzi: {', '.join(mobility)}")
+            lines.append(f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}")
 
         appendix = email_content.get("appendix", {})
         if appendix:
+            shown = {r.get("link") for r in resources if r.get("link")}
+            if hero_link:
+                shown.add(hero_link)
             urls: list[str] = []
             for _label, items in appendix.get("groups", []):
-                urls.extend(i["link"] for i in items if i.get("link"))
-            urls.extend(u["link"] for u in appendix.get("source_links", []) if isinstance(u, dict) and u.get("link"))
+                for i in items or []:
+                    link = i.get("link")
+                    if link and link not in shown and link not in urls:
+                        urls.append(link)
+            for u in appendix.get("source_links", []):
+                if isinstance(u, dict) and u.get("link"):
+                    link = u["link"]
+                    if link not in shown and link not in urls:
+                        urls.append(link)
+            urls = urls[:3]
             if urls:
                 lines.append("")
                 lines.append("Fonti:")
@@ -505,9 +546,22 @@ class TripOrchestrator:
                         if i.get("link") and _is_junk_link(i.get("link"))]
         if dropped_junk:
             logger.warning("maps corpus: dropped %d junk-domain entries: %s", len(dropped_junk), dropped_junk)
-        linkless_names = [i.get("name") for i in maps_items if not i.get("link")]
-        if linkless_names:
-            logger.warning("maps corpus: dropped %d link-less entries: %s", len(linkless_names), linkless_names)
+        rescued = 0
+        nameless_drops: list = []
+        for it in maps_items:
+            if it.get("link"):
+                continue
+            generated = _maps_search_link(it.get("name"), it.get("address"))
+            if generated is None:
+                nameless_drops.append(it.get("name"))
+                continue
+            it["link"] = generated
+            linked_maps.append(it)
+            rescued += 1
+        if rescued:
+            logger.info("maps corpus: rescued %d link-less entries with generated Maps links", rescued)
+        if nameless_drops:
+            logger.warning("maps corpus: dropped %d link-less entries: %s", len(nameless_drops), nameless_drops)
 
         corpus = {
             "flights": [{k: v for k, v in f.items() if k != "_meta"} for f in flights_list],
@@ -616,23 +670,23 @@ class TripOrchestrator:
 
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
+        content = strip_bracket_ids(content)
         from src.core.feedback_token import make_token
         from src.settings import get_settings
-        import re
 
         settings = get_settings()
         base = getattr(settings, "feedback_base_url", "https://xen-ia.github.io/nostos")
         token = make_token(self._trip_id, settings.api_token or "dev-secret", ttl_days=settings.feedback_token_ttl_days)
         content["feedback_link"] = f"{base}/feedback.html?trip_id={self._trip_id}&token={token}"
-        from_addr = (getattr(settings, "email_from_address", "") or "").strip()
-        addr_match = re.search(r"<([^>]+)>", from_addr)
-        content["reply_to"] = addr_match.group(1).strip() if addr_match else from_addr
         content["sections_map"] = {
             "flights": [r["link"] for r in curated["flights"] if r.get("link")],
             "places": [r["link"] for r in curated["places"] if r.get("link")],
             "maps": [r["link"] for r in curated["maps"] if r.get("link")],
         }
-        content["appendix"] = self._build_appendix(research)
+        content["appendix"] = self._build_appendix(
+            research,
+            exclude_links={r["link"] for r in content["resources"] if r.get("link")},
+        )
         # Pass intent fields for email template sections
         content["travel_mode"] = intent.travel_mode
         content["mobility"] = intent.mobility_preferences
@@ -649,17 +703,23 @@ class TripOrchestrator:
         return content, body_text, body_html, package
 
     @staticmethod
-    def _build_appendix(research: dict) -> dict:
+    def _build_appendix(research: dict, exclude_links: set[str] | None = None) -> dict:
         corpus = research["corpus"]
+        excluded = set(exclude_links or ())
+        excluded.add("https://xen-ia.github.io/nostos")
 
         def brief_items(items: list[dict]) -> list[dict]:
-            return [
-                {"name": it.get("name") or it.get("airline"), "link": it.get("link")}
-                for it in items
-                if it.get("link") and not _is_junk_link(it.get("link"))
-            ]
+            out = []
+            for it in items:
+                link = it.get("link")
+                if not link or _is_junk_link(link) or link in excluded:
+                    continue
+                if link in (i["link"] for i in out):
+                    continue
+                out.append({"name": it.get("name") or it.get("airline"), "link": link})
+            return out
 
-        # Cap the total links across groups at 5, keeping group order
+        # Cap the total links across groups at 3, keeping group order
         # Voli → Dove stare → Cosa fare; drop empty groups.
         raw_groups = [
             ("Voli", brief_items(corpus["flights"])),
@@ -667,18 +727,20 @@ class TripOrchestrator:
             ("Cosa fare", brief_items(corpus["maps"])),
         ]
         groups: list[tuple[str, list[dict]]] = []
-        remaining = 5
+        remaining = 3
         for label, items in raw_groups:
             take = items[:remaining]
             remaining -= len(take)
             if take:
                 groups.append((label, take))
 
-        # Only include the winning flight link (not all probed combinations)
+        # Only include the winning flight link when not already shown
+        # (not all probed combinations).
         source_links = []
-        if corpus.get("flights"):
+        if corpus.get("flights") and remaining > 0:
             flight = corpus["flights"][0]
-            if flight.get("link") and not _is_junk_link(flight.get("link")):
+            if (flight.get("link") and not _is_junk_link(flight.get("link"))
+                    and flight["link"] not in excluded):
                 source_links.append({"name": flight.get("airline", "Volo selezionato"), "link": flight["link"]})
 
         return {

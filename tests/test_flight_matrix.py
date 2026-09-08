@@ -323,23 +323,31 @@ async def test_cap_keeps_eight_probes_covering_all_windows_first(monkeypatch):
 # --- C4: maps corpus drops link-less entries ---
 
 
-async def test_maps_linkless_entries_dropped_and_logged(monkeypatch, caplog):
+async def test_maps_linkless_entries_rescued_and_logged(monkeypatch, caplog):
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
 
     async def fake_maps(query, **kwargs):
         return [
-            {"name": "Junk No Link", "type": "t", "rating": None},
+            {"name": "Rescued POI", "address": "Loch Ness, UK", "type": "t", "rating": 4.8},
+            {"name": None, "type": "t", "rating": None},
             {"name": "Good POI", "type": "t", "rating": 4.5, "link": "https://example.com/poi"},
         ]
 
     _patch_searches(monkeypatch, maps_fn=fake_maps)
     db = FakeDatabase()
-    with caplog.at_level(logging.WARNING, logger="nostos.orchestrator"):
+    with caplog.at_level(logging.INFO, logger="nostos.orchestrator"):
         await _run(trip, _make_llm(), db)
 
     corpus_maps = db.saved[0]["package"]["corpus"]["maps"]
-    assert [i["name"] for i in corpus_maps] == ["Good POI"]
-    assert any("link-less" in r.getMessage() and "Junk No Link" in r.getMessage() for r in caplog.records)
+    names = [i["name"] for i in corpus_maps]
+    assert "Rescued POI" in names
+    assert "Good POI" in names
+    assert None not in names
+    rescued = next(i for i in corpus_maps if i["name"] == "Rescued POI")
+    assert "google.com/maps/search" in rescued["link"]
+    assert any("rescued 1 link-less" in r.getMessage() for r in caplog.records)
+    assert any("link-less" in r.getMessage() and r.levelname == "WARNING"
+               for r in caplog.records)
 
 
 # --- winner selection across probes ---
