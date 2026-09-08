@@ -276,3 +276,42 @@ def test_feedback_endpoint():
     assert body["trip_id"] == trip_id
     assert body["rating"] == 5
     assert body["comment"] == "Bellissimo"
+
+
+def test_feedback_public_with_valid_token():
+    from src.core.feedback_token import make_token
+
+    secret = "test-secret-123"
+    app, store, arq = make_app(api_token=secret)
+    trip_id = "trip-token-ok"
+    tok = make_token(trip_id, secret)
+    with TestClient(app) as client:
+        resp = client.post(
+            f"/api/v1/trips/{trip_id}/feedback/public",
+            json={"rating": 5},
+            headers={"X-Feedback-Token": tok},
+        )
+    assert resp.status_code == 201
+
+
+def test_feedback_public_invalid_token_rejected():
+    secret = "test-secret-123"
+    app, store, arq = make_app(api_token=secret)
+    trip_id = "trip-token-bad"
+    with TestClient(app) as client:
+        resp = client.post(
+            f"/api/v1/trips/{trip_id}/feedback/public",
+            json={"rating": 5},
+            headers={"X-Feedback-Token": "bad"},
+        )
+    assert resp.status_code == 401
+
+
+def test_feedback_public_without_token_allowed():
+    app, store, arq = make_app(api_token="some-secret")
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/trips/trip-no-token/feedback/public",
+            json={"rating": 4, "comment": "ok"},
+        )
+    assert resp.status_code == 201

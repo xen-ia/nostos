@@ -13,6 +13,7 @@ dependencies = [
     "ollama>=0.6.2",
     "openai>=2.53.0",
     "pydantic-settings>=2.14.2",
+    "python-multipart>=0.0.32",
     "redis>=8.0.1",
     "resend>=2.35.0",
     "rich>=15.0.0",

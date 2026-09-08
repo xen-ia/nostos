@@ -119,6 +119,13 @@ async def submit_feedback_public(
     )
     await public_limiter.check(rate_limit_key(request))
 
+    token = request.headers.get("X-Feedback-Token")
+    if token:
+        from src.core.feedback_token import verify_token
+
+        if not verify_token(token, trip_id, settings.api_token or "dev-secret"):
+            raise APIError(ErrorCode.UNAUTHORIZED, "Invalid feedback token", 401)
+
     await db.save_feedback(trip_id, payload.rating, payload.comment)
     return FeedbackResponse(
         trip_id=trip_id,

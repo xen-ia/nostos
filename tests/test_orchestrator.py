@@ -222,14 +222,21 @@ async def test_already_claimed_returns_without_side_effects():
 
 
 async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monkeypatch):
+    from datetime import date, timedelta
+
+    # Finestre relative a oggi: date fisse scadono e sanitize_windows le scarta.
+    w1_start = (date.today() + timedelta(days=30)).isoformat()
+    w1_end = (date.today() + timedelta(days=44)).isoformat()
+    w2_start = (date.today() + timedelta(days=60)).isoformat()
+    w2_end = (date.today() + timedelta(days=74)).isoformat()
     store = make_store()
     trip = await store.create(make_trip(start_date=None, end_date=None))
     llm = FakeLLM(
         response=INTENT,
         email_response=EMAIL,
         responses={PeriodPlan: PeriodPlan(windows=[
-            {"start": "2026-09-01", "end": "2026-09-15", "rationale": "mild"},
-            {"start": "2026-10-01", "end": "2026-10-15", "rationale": "cheaper"},
+            {"start": w1_start, "end": w1_end, "rationale": "mild"},
+            {"start": w2_start, "end": w2_end, "rationale": "cheaper"},
         ])},
     )
 
@@ -237,7 +244,7 @@ async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monke
 
     async def fake_flights(departure, destination, start_date, end_date, **kwargs):
         seen_outbound_dates.append(start_date)
-        price = 400 if start_date == "2026-09-01" else 300
+        price = 400 if start_date == w1_start else 300
         return [{"airline": "ANA", "from": "MXP", "to": "HND", "departure_date": start_date,
                  "price_eur": price, "link": f"https://example.com/{start_date}"}]
 
@@ -260,8 +267,8 @@ async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monke
                                     database=db, trip_id=trip.id)
     await _run(orchestrator)
 
-    assert sorted(seen_outbound_dates) == ["2026-09-01", "2026-10-01"]  # both windows probed
-    assert stay_windows[-1] == "2026-10-01"  # stays aligned to cheapest window
+    assert sorted(seen_outbound_dates) == sorted([w1_start, w2_start])  # both windows probed
+    assert stay_windows[-1] == w2_start  # stays aligned to cheapest window
     assert email.sent and db.saved  # trip completes
 
 
@@ -522,3 +529,99 @@ async def test_gate_empty_resources_on_both_attempts_fails_without_email(monkeyp
     assert got.status == TripStatus.ERROR
     assert "could not ground" in (got.result or "")
     assert len([p for p, m in llm.calls if m is EmailContent]) == 2
+
+
+def test_continent_helper():
+    from src.core.orchestrator import _continent
+
+    assert _continent("Italy") == "europe"
+    assert _continent("Italia") == "europe"
+    assert _continent("Patagonia") == "south_america"
+    assert _continent("Argentina") == "south_america"
+    assert _continent("Cile") == "south_america"
+    assert _continent("Chile") == "south_america"
+    assert _continent("Brasile") == "south_america"
+    assert _continent("Peru") == "south_america"
+    assert _continent("USA") == "north_america"
+    assert _continent("Giappone") == "asia"
+    assert _continent("Japan") == "asia"
+    assert _continent("Thailand") == "asia"
+    assert _continent("Australia") == "oceania"
+    assert _continent("Italy") != _continent("Patagonia")
+    assert _continent(None) is None
+    assert _continent("") is None
+    assert _continent("UnknownPlaceXYZ") is None
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_intercontinental_forces_flights(monkeypatch):
+    from src.core.models import ResolvedDestinations, ResolvedPlace
+
+    # van_life normally blocks flights, but Italy -> Patagonia is intercontinental -> flights must be probed
+    intent = TripIntent(destination="Patagonia", travel_mode="van_life")
+    trip = make_trip(departure_location="Italy", destination="Patagonia")
+    store = make_store()
+    await store.create(trip)
+
+    flight_called = []
+
+    async def fake_flights(departure, arrival, start_date, end_date, **kwargs):
+        flight_called.append((departure, arrival))
+        return [{"airline": "ITA", "from": departure, "to": arrival, "departure_date": start_date, "price_eur": 500, "link": "https://example.com/f"}]
+
+    async def fake_maps(query, **kwargs):
+        return [{"name": "Perito Moreno", "type": "Glacier", "rating": 4.8, "link": "https://example.com/poi"}]
+
+    async def fake_places(**kwargs):
+        return [{"name": "Hotel Patagonia", "price_per_night_eur": 80, "link": "https://example.com/hotel"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", fake_flights)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", fake_maps)
+    monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
+
+    orchestrator = TripOrchestrator(store=store, llm_client=FakeLLM(response=intent), email_sender=FakeEmailSender(), database=FakeDatabase(), trip_id=trip.id)
+    resolved = ResolvedDestinations(destinations=[ResolvedPlace(name="Patagonia", country="Argentina", airport_code="EZE")], rationale="test")
+    tool_calls: list[dict] = []
+    result = await orchestrator._execute_searches(trip, intent, [], [("2026-09-01", "2026-09-10")], [], tool_calls, resolved=resolved, departure_codes=["MXP"])
+
+    assert flight_called, "flights should be probed for intercontinental van_life"
+    assert result["geo"]["skipped_flights_reason"] is None
+    assert not any(tc.get("skipped") for tc in tool_calls if tc.get("engine") == "google_flights")
+
+
+@pytest.mark.asyncio
+async def test_same_continent_van_life_skips_flights(monkeypatch):
+    from src.core.models import ResolvedDestinations, ResolvedPlace
+
+    intent = TripIntent(destination="Francia", travel_mode="van_life")
+    trip = make_trip(departure_location="Italy", destination="Francia")
+    store = make_store()
+    await store.create(trip)
+
+    flight_called = []
+
+    async def fake_flights(departure, arrival, start_date, end_date, **kwargs):
+        flight_called.append((departure, arrival))
+        return [{"airline": "AF", "from": departure, "to": arrival, "departure_date": start_date, "price_eur": 100, "link": "https://example.com/f"}]
+
+    async def fake_maps(query, **kwargs):
+        return [{"name": "Eiffel", "type": "Monument", "rating": 4.6, "link": "https://example.com/poi"}]
+
+    async def fake_places(**kwargs):
+        return [{"name": "Hotel Paris", "price_per_night_eur": 90, "link": "https://example.com/hotel"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", fake_flights)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", fake_maps)
+    monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
+
+    orchestrator = TripOrchestrator(store=store, llm_client=FakeLLM(response=intent), email_sender=FakeEmailSender(), database=FakeDatabase(), trip_id=trip.id)
+    resolved = ResolvedDestinations(destinations=[ResolvedPlace(name="Francia", country="France", airport_code="CDG")], rationale="test")
+    tool_calls: list[dict] = []
+    result = await orchestrator._execute_searches(trip, intent, [], [("2026-09-01", "2026-09-10")], [], tool_calls, resolved=resolved, departure_codes=["MXP"])
+
+    assert flight_called == [], "flights should be skipped for same-continent van_life"
+    assert result["geo"]["skipped_flights_reason"] == "travel_mode:van_life"
+    assert any(tc.get("skipped") and tc.get("reason") == "travel_mode:van_life" for tc in tool_calls)

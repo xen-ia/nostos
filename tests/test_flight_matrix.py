@@ -251,15 +251,22 @@ async def test_flexible_dates_probe_three_deduped_windows(monkeypatch):
 
 
 async def test_absent_dates_still_use_period_plan_windows(monkeypatch):
+    from datetime import date, timedelta
+
     from src.core.models import PeriodPlan
 
+    # Finestre relative a oggi: date fisse scadono e sanitize_windows le scarta.
+    w1_start = (date.today() + timedelta(days=30)).isoformat()
+    w1_end = (date.today() + timedelta(days=44)).isoformat()
+    w2_start = (date.today() + timedelta(days=60)).isoformat()
+    w2_end = (date.today() + timedelta(days=74)).isoformat()
     trip = make_trip(start_date=None, end_date=None)
     llm = FakeLLM(
         response=INTENT,
         email_response=EMAIL,
         responses={PeriodPlan: PeriodPlan(windows=[
-            {"start": "2026-09-01", "end": "2026-09-15"},
-            {"start": "2026-10-01", "end": "2026-10-15"},
+            {"start": w1_start, "end": w1_end},
+            {"start": w2_start, "end": w2_end},
         ])},
     )
     starts = []
@@ -272,7 +279,7 @@ async def test_absent_dates_still_use_period_plan_windows(monkeypatch):
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     await _run(trip, llm, FakeDatabase())
 
-    assert sorted(starts) == ["2026-09-01", "2026-10-01"]
+    assert sorted(starts) == sorted([w1_start, w2_start])
 
 
 # --- C3 cap: MAX_FLIGHT_PROBES with windows -> arrivals -> departures priority ---
