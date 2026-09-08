@@ -154,7 +154,8 @@
     padding-top: 1.75rem;
   }
 
-  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .field { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+  .field > * { min-width: 0; }
   .field.full { grid-column: 1 / -1; }
 
   .field label {
@@ -188,6 +189,8 @@
     border-radius: 8px;
     color: var(--ink-text);
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
 
@@ -385,7 +388,8 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .people-row { display: flex; gap: 0.5rem; align-items: stretch; }
+  .people-row { display: flex; gap: 0.5rem; align-items: stretch; min-width: 0; }
+  .people-row select { flex: 1; min-width: 0; }
   .stepper {
     display: inline-flex;
     align-items: stretch;
@@ -636,23 +640,15 @@
     box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
   }
   .mic-btn.is-recording {
-    background: var(--terracotta-deep);
+    background: #FCF9EF;
     border-color: var(--terracotta-deep);
-    color: #FCF9EF;
+    color: var(--terracotta-deep);
+    animation: mic-ring 1.6s ease-out infinite;
   }
-  .mic-btn .rec-dot {
-    display: none;
-    width: 0.65rem;
-    height: 0.65rem;
-    border-radius: 50%;
-    background: #E2574C;
-    animation: rec-pulse 1s ease-in-out infinite;
-  }
-  .mic-btn.is-recording .mic-icon { display: none; }
-  .mic-btn.is-recording .rec-dot { display: block; }
-  @keyframes rec-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.45; transform: scale(0.8); }
+  @keyframes mic-ring {
+    0% { box-shadow: 0 0 0 0 rgba(154,74,42,0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(154,74,42,0); }
+    100% { box-shadow: 0 0 0 0 rgba(154,74,42,0); }
   }
 
   .composer-wrap { position: relative; }
@@ -678,8 +674,11 @@
 
   .voicebar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
+    min-width: 0;
+    max-width: 100%;
     margin-top: 0.5rem;
     padding: 0.45rem 0.6rem;
     border: 1.5px solid rgba(217,164,74,0.55);
@@ -687,19 +686,21 @@
     background: rgba(217,164,74,0.08);
   }
   .voicebar[hidden] { display: none; }
-  #voice-wave { flex-shrink: 0; }
+  #voice-wave { flex-shrink: 0; max-width: 100%; height: auto; }
   #voice-timer {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--terracotta-deep);
     min-width: 2.2rem;
+    flex-shrink: 0;
   }
   #voice-hint {
     font-size: 0.8rem;
     color: var(--ink-muted);
-    flex: 1;
+    flex: 1 1 7rem;
     min-width: 0;
+    overflow-wrap: break-word;
   }
   #voice-hint.is-cancel { color: #A83A28; font-weight: 600; }
   #voice-lock {
@@ -717,6 +718,7 @@
     align-items: center;
     gap: 0.35rem;
     flex-shrink: 0;
+    max-width: 100%;
     transition: background 0.15s ease;
   }
   #voice-lock:hover { background: rgba(217,164,74,0.18); }
@@ -924,7 +926,7 @@
     .masthead, .hero h1, .hero p,
     .ticket, .chip, #status, .calendar, body::before,
     #feedback, #fb-thanks,
-    .compass-rings, .needle {
+    .compass-rings, .needle, .mic-btn.is-recording {
       animation: none !important;
     }
     button[type="submit"], button[type="submit"]::after,
@@ -948,6 +950,7 @@
     .people-row input[type="number"], .people-row select { min-height: 2.75rem; }
     .people-row select { flex: 1; min-width: 0; }
     .people-row { flex-wrap: wrap; }
+    #voice-lock { min-height: 2.75rem; padding: 0.5rem 0.9rem; }
     .stepper button { width: 3rem; min-height: 2.75rem; }
     .stepper input[type="number"] { min-height: 2.75rem; width: 3.2rem; font-size: 1.05rem; }
     button[type="submit"] { width: 100%; padding: 1rem 1.5rem; }
@@ -1082,7 +1085,7 @@
       </div>
 
       <div class="field full">
-        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false"><rect x="7.5" y="2.5" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 9.5a5 5 0 0 0 10 0M10 14.5V17M7.5 17h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="rec-dot" aria-hidden="true"></span></button></label>
+        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><rect x="7.4" y="2.2" width="5.2" height="8.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 9.3a4.7 4.7 0 0 0 9.4 0M10 14v2.4M7.9 16.9h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></label>
         <div class="composer-wrap">
           <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done" maxlength="5000"></textarea>
           <div id="voice-interim" class="voice-interim" aria-hidden="true" hidden></div>
@@ -1092,7 +1095,7 @@
           <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
           <span id="voice-timer" role="timer">0:00</span>
           <span id="voice-hint">Tieni premuto · trascina per annullare</span>
-          <button type="button" id="voice-lock" aria-label="Blocca registrazione"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>Blocca</span></button>
+          <button type="button" id="voice-lock" aria-label="Finisci la registrazione"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg><span>Fine</span></button>
         </div>
         <div id="voice-error" class="voice-error" role="alert" hidden></div>
         <div id="voice-live-region" class="sr-only" aria-live="polite"></div>
@@ -1515,7 +1518,8 @@
 
   const HINT_DEFAULT = "Tieni premuto · trascina per annullare";
   const HINT_CANCEL = "Rilascia per annullare";
-  const HINT_LOCKED = "Bloccato · tocca il microfono per finire";
+  const HINT_LOCKED = "Registrazione bloccata · tocca il microfono per finire";
+  const HINT_LISTENING = "Ascolto…";
   const HINT_TRANSCRIBING = "Trascrizione…";
   const CANCEL_PX = 60;
   const LOCK_AFTER_MS = 1000;
@@ -1542,6 +1546,7 @@
     snapshot: "",
     stopIntentional: false,
     keyHolding: false,
+    stopFallback: 0,
   };
 
   function announce(msg){ voiceLiveRegion.textContent = msg; }
@@ -1668,6 +1673,7 @@
     stopTimer();
     stopWave();
     cleanupAudio();
+    clearTimeout(voice.stopFallback);
     voicebar.hidden = true;
     micBtn.classList.remove("is-recording");
     micBtn.setAttribute("aria-pressed", "false");
@@ -1708,11 +1714,13 @@
       rec.interimResults = true;
       rec.continuous = true;
       rec.onresult = (e) => {
-        if (voice.state !== "holding" && voice.state !== "locked") return;
+        if (voice.state !== "holding" && voice.state !== "locked" && voice.state !== "stopping") return;
         let interim = "";
         for (let i = e.resultIndex; i < e.results.length; i++){
           const r = e.results[i];
           const chunk = r[0].transcript.trim();
+          // i final vengono impegnati una sola volta (resultIndex avanza sempre);
+          // l'interim viene sostituito a ogni evento, mai accodato
           if (r.isFinal){
             if (chunk) commitText(chunk);
           } else if (chunk){
@@ -1722,9 +1730,12 @@
         if (interim){
           voiceInterim.hidden = false;
           voiceInterim.textContent = interim;
-        } else {
+        } else if (voice.state === "stopping"){
           voiceInterim.hidden = true;
           voiceInterim.textContent = "";
+        } else {
+          voiceInterim.hidden = false;
+          voiceInterim.textContent = HINT_LISTENING;
         }
       };
       rec.onerror = (e) => {
@@ -1739,10 +1750,22 @@
         // "no-speech", "aborted", "audio-capture": ignora, onend riprova se serve
       };
       rec.onend = () => {
-        voiceInterim.hidden = true;
-        voiceInterim.textContent = "";
+        // stop volontario: i final dell'ultimo onresult sono già impegnati,
+        // si azzera l'interim e si chiude la sessione una sola volta qui
+        if (voice.state === "stopping"){
+          clearTimeout(voice.stopFallback);
+          voiceInterim.hidden = true;
+          voiceInterim.textContent = "";
+          endSessionUI();
+          announce("Testo aggiunto");
+          return;
+        }
         // Chrome mette in pausa da solo: riparti finché l'utente tiene premuto
         if ((voice.state === "holding" || voice.state === "locked") && !voice.stopIntentional){
+          if (!voiceInterim.textContent){
+            voiceInterim.hidden = false;
+            voiceInterim.textContent = HINT_LISTENING;
+          }
           try { rec.start(); } catch {}
         }
       };
@@ -1821,6 +1844,7 @@
 
   async function startSession(){
     if (voice.state !== "idle") return;
+    clearTimeout(voice.stopFallback);
     voiceError.hidden = true;
     voiceError.textContent = "";
     voice.snapshot = freeText.value;
@@ -1831,6 +1855,10 @@
     micBtn.classList.add("is-recording");
     micBtn.setAttribute("aria-pressed", "true");
     setHint(HINT_DEFAULT, false);
+    // stato parziale onesto: finché il browser non consegna interim veri,
+    // il compositore mostra che sta ascoltando (mai riga vuota a 0:33)
+    voiceInterim.hidden = false;
+    voiceInterim.textContent = HINT_LISTENING;
     startTimer();
     startWave();
     announce("Registrazione avviata");
@@ -1856,8 +1884,13 @@
     voice.stopIntentional = true;
     if (voice.engine === "live" && voice.rec){
       try { voice.rec.stop(); } catch {}
-      endSessionUI();
-      announce("Testo aggiunto");
+      // i final in arrivo vengono impegnati da onresult, la chiusura
+      // (clear interim + endSessionUI) avviene in onend; fallback di
+      // sicurezza se onend non dovesse mai scattare
+      clearTimeout(voice.stopFallback);
+      voice.stopFallback = setTimeout(() => {
+        if (voice.state === "stopping") endSessionUI();
+      }, 2000);
     } else if (voice.recorder && voice.recorder.state === "recording"){
       voice.recorder.stop(); // onstop → transcribeBatch → endSessionUI
     } else {
@@ -1926,7 +1959,7 @@
     if (voice.state === "locked") finishRelease();
   });
 
-  // Tap su Blocca dopo 1s di hold → locked.
+  // Tap su Fine dopo 1s di hold → locked.
   voiceLock.addEventListener("click", () => {
     if (voice.state === "holding" && Date.now() - voice.startedAt > LOCK_AFTER_MS) enterLocked();
   });
