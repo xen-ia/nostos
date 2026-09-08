@@ -551,6 +551,25 @@
   #status.is-error { color: #E0896E; }
   #status.is-done { color: #B4BE92; }
 
+  #new-search {
+    display: block;
+    margin: 0.9rem auto 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--terracotta-deep);
+    background: #FCF9EF;
+    border: 1.5px solid var(--border);
+    padding: 0.6rem 1.6rem;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 8px 16px -8px rgba(0,0,0,0.3);
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  #new-search[hidden] { display: none; }
+  #new-search:hover { transform: translateY(-1px); border-color: var(--gold); background: #FFFDF5; }
+  #new-search:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(217,164,74,0.35); }
+
   /* ---- form v2: Altro + date flessibili ---- */
 
   .altro-input[hidden] { display: none; }
@@ -925,8 +944,9 @@
       </div>
 
       <div class="field full">
-        <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
+        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" aria-label="Detta con microfono" style="margin-left:0.5rem;width:1.9rem;height:1.9rem;border-radius:50%;border:1.5px solid var(--terracotta-deep);background:#FCF9EF;color:var(--terracotta-deep);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;line-height:1;padding:0;flex-shrink:0;transition:background 0.15s ease,transform 0.15s ease;">🎤</button></label>
         <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done"></textarea>
+        <div id="mic-status" hidden style="font-size:0.8rem;color:var(--terracotta);margin-top:0.35rem;">Registrazione in corso… clicca per fermare</div>
         <div class="chips">
           <button type="button" class="chip" data-text="trekking e natura">
             <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
@@ -986,6 +1006,7 @@
   </form>
 
   <div id="status"></div>
+  <button type="button" id="new-search" hidden>Nuova ricerca</button>
 
   <div id="feedback" hidden>
     <p class="fb-title">Com'è andata? Lasciaci una valutazione</p>
@@ -1300,6 +1321,7 @@
   });
 
   window.addEventListener("pageshow", () => {
+    try { const s = JSON.parse(localStorage.getItem("nostos_active_trip") || "null"); if (s && s.id) return; } catch {}
     form.reset();
     document.querySelectorAll(".chip.active").forEach(chip => chip.classList.remove("active"));
     rangeStart = null;
@@ -1326,6 +1348,35 @@
         freeText.value = current.replace(new RegExp(`,?\\s*${fragment}`), "").trim();
       }
     });
+  });
+
+  // ---- STT microfono per free_text ----
+  const micBtn = document.getElementById("mic-btn");
+  const micStatus = document.getElementById("mic-status");
+  let recorder, chunks=[];
+  micBtn.addEventListener("click", async ()=>{
+    if(recorder && recorder.state==="recording"){
+      recorder.stop(); return;
+    }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      recorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4"});
+      chunks=[];
+      recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+      recorder.onstop= async ()=>{
+        micStatus.hidden=true; micBtn.disabled=true; micBtn.textContent="⏳";
+        const blob = new Blob(chunks, {type: recorder.mimeType});
+        const fd = new FormData(); fd.append("audio", blob, "audio.webm");
+        try{
+          const res = await fetch(`${API_BASE}/stt`, {method:"POST", body: fd});
+          if(!res.ok) throw new Error(await res.text());
+          const {text} = await res.json();
+          freeText.value = freeText.value ? freeText.value + " " + text : text;
+        }catch(err){ statusEl.className="is-error"; statusEl.textContent="Errore trascrizione: "+err.message; }
+        finally{ micBtn.disabled=false; micBtn.textContent="🎤"; stream.getTracks().forEach(t=>t.stop()); }
+      };
+      recorder.start(); micStatus.hidden=false; micBtn.textContent="⏹️";
+    }catch(err){ statusEl.className="is-error"; statusEl.textContent="Microfono non disponibile: "+err.message; }
   });
 
   // ---- pattern "Altro": select con value "" rivela un input di testo ----
@@ -1372,6 +1423,24 @@
   let pollTimer = null;
   let fbRating = 0;
 
+  const LS_KEY = "nostos_active_trip";
+  const newSearchBtn = document.getElementById("new-search");
+
+  function saveActiveTrip(id){ try{ localStorage.setItem(LS_KEY, JSON.stringify({id, ts: Date.now()})); }catch{} }
+  function clearActiveTrip(){ try{ localStorage.removeItem(LS_KEY); }catch{} }
+  function loadActiveTrip(){ try{ const v = localStorage.getItem(LS_KEY); return v ? JSON.parse(v) : null; }catch{ return null; } }
+
+  function validateForm(){
+    const email = document.getElementById("email").value.trim();
+    const start = document.getElementById("start_date").value;
+    const dest = document.getElementById("destination").value.trim();
+    const free = document.getElementById("free_text").value.trim();
+    if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Inserisci un'email valida";
+    if(!start) return "Scegli le date del viaggio";
+    if(!dest && !free) return "Indica una destinazione o descrivi il viaggio";
+    return null;
+  }
+
   function renderStatus(status){
     statusEl.className = "";
     statusEl.textContent = STATUS_COPY[status] || "Richiesta ricevuta, in coda…";
@@ -1397,9 +1466,10 @@
     stopPolling();
     if (status === "done"){
       statusEl.className = "is-done";
+      const emailVal = document.getElementById("email").value.trim();
       statusEl.textContent =
         "Tutto pronto! Ti abbiamo scritto a " +
-        document.getElementById("email").value +
+        (emailVal || "la tua email") +
         " con i primi spunti.";
       feedbackEl.hidden = false;
     } else {
@@ -1407,28 +1477,42 @@
       statusEl.textContent =
         "Questa richiesta non è andata a buon fine. Riprova con una nuova richiesta.";
     }
+    // keep localStorage until feedback sent or nuova ricerca; button stays visible
+    if (newSearchBtn) newSearchBtn.hidden = false;
   }
 
   async function pollTrip(){
     if (!currentTripId) return;
     try {
       const res = await fetch(`${API_BASE}/trips/${currentTripId}/status/public`);
+      if (res.status === 404){
+        clearActiveTrip();
+        if (newSearchBtn) newSearchBtn.hidden = true;
+        statusEl.className = "is-error";
+        statusEl.textContent = "Richiesta non trovata. Fai una nuova ricerca.";
+        stopPolling();
+        currentTripId = null;
+        return;
+      }
       if (!res.ok) throw new Error(`Errore server: ${res.status}.`);
       const trip = await res.json();
       if (trip.status === "pending" || trip.status === "running"){
         renderStatus(trip.status);
+        if (newSearchBtn) newSearchBtn.hidden = false;
         pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
       } else {
         onFinished(trip.status, trip.result);
       }
     } catch (err) {
       statusEl.className = "is-error";
-      statusEl.textContent = "Errore durante l'aggiornamento: " + err.message;
+      statusEl.textContent = "Errore durante l'aggiornamento: " + err.message + " — ritento...";
+      pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
     }
   }
 
   function startPolling(initialStatus){
     stopPolling();
+    if (newSearchBtn) newSearchBtn.hidden = false;
     if (initialStatus === "done" || initialStatus === "error"){
       onFinished(initialStatus);
       return;
@@ -1436,6 +1520,40 @@
     renderStatus(initialStatus);
     pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
   }
+
+  function resetForNewSearch(){
+    clearActiveTrip();
+    stopPolling();
+    currentTripId = null;
+    form.reset();
+    document.querySelectorAll(".chip.active").forEach(chip => chip.classList.remove("active"));
+    rangeStart = null;
+    rangeEnd = null;
+    hoverDate = null;
+    updateTrigger();
+    closeCalendar();
+    ALTRO_FIELDS.forEach(({ select, input }) => {
+      select.value = select.options[0].value;
+      input.hidden = true;
+      input.value = "";
+    });
+    resetFeedbackUI();
+    statusEl.className = "";
+    statusEl.textContent = "";
+    if (newSearchBtn) newSearchBtn.hidden = true;
+  }
+
+  if (newSearchBtn) newSearchBtn.addEventListener("click", resetForNewSearch);
+
+  window.addEventListener("DOMContentLoaded", ()=>{
+    const saved = loadActiveTrip();
+    if(saved && saved.id){
+      currentTripId = saved.id;
+      if (newSearchBtn) newSearchBtn.hidden = false;
+      // non abbiamo PII salvata, lascia email vuota
+      pollTrip();
+    }
+  });
 
   fbStars.forEach(star => star.addEventListener("click", () => {
     fbRating = Number(star.dataset.rating);
@@ -1466,6 +1584,7 @@
       }
       feedbackEl.hidden = true;
       fbThanks.hidden = false;
+      clearActiveTrip();
     } catch (err) {
       fbError.textContent = "Invio non riuscito: " + err.message + " Riprova.";
       fbError.hidden = false;
@@ -1483,6 +1602,8 @@
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const err = validateForm();
+    if(err){ statusEl.className="is-error"; statusEl.textContent=err; return; }
     resetFeedbackUI();
     submitBtn.disabled = true;
     submitBtn.classList.add("is-loading");
@@ -1531,6 +1652,7 @@
       }
       const data = await res.json();
       currentTripId = data.id || null;
+      if (currentTripId) saveActiveTrip(currentTripId);
       startPolling(data.status || "pending");
     } catch (err) {
       statusEl.className = "is-error";

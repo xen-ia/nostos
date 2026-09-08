@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from src.settings import get_settings
-from src.api.routers import trips
+from src.api.routers import stt, trips
 from src.api.errors import register_exception_handlers
 from src.logging import setup_logging
 from src.api.middleware import RequestIDMiddleware
@@ -48,6 +48,7 @@ app.add_middleware(
 register_exception_handlers(app)
 
 app.include_router(trips.router)
+app.include_router(stt.router)
 
 START_TIME = time.time()
 

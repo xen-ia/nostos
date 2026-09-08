@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 class ErrorCode(StrEnum):
     VALIDATION_ERROR = "validation_error"
+    BAD_REQUEST = "bad_request"
     NOT_FOUND = "not_found"
     TRIP_NOT_FOUND = "trip_not_found"
     RATE_LIMITED = "rate_limited"
