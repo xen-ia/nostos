@@ -47,6 +47,52 @@ MAX_RESOLVED_DESTINATIONS = 2
 FLEXIBLE_WINDOW_SHIFT_DAYS = 7
 FLIGHT_BLOCKING_TRAVEL_MODES = frozenset({"road_trip", "van_life", "sailing"})
 
+_CONTINENT_MAP = {
+    "italy": "europe",
+    "italia": "europe",
+    "europe": "europe",
+    "francia": "europe",
+    "france": "europe",
+    "spagna": "europe",
+    "spain": "europe",
+    "germania": "europe",
+    "germany": "europe",
+    "uk": "europe",
+    "patagonia": "south_america",
+    "argentina": "south_america",
+    "cile": "south_america",
+    "chile": "south_america",
+    "brasile": "south_america",
+    "brazil": "south_america",
+    "peru": "south_america",
+    "perù": "south_america",
+    "usa": "north_america",
+    "canada": "north_america",
+    "messico": "north_america",
+    "mexico": "north_america",
+    "giappone": "asia",
+    "japan": "asia",
+    "thailand": "asia",
+    "thailandia": "asia",
+    "cina": "asia",
+    "china": "asia",
+    "india": "asia",
+    "australia": "oceania",
+    "new zealand": "oceania",
+    "nuova zelanda": "oceania",
+}
+
+
+def _continent(place: str | None) -> str | None:
+    if not place:
+        return None
+    key = place.lower().strip()
+    for k, v in _CONTINENT_MAP.items():
+        if k in key:
+            return v
+    return None
+
+
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
 CTA = "Se questa direzione ti somiglia, rispondi a questa email: costruiamo insieme il resto del viaggio."
@@ -209,25 +255,24 @@ class TripOrchestrator:
         # Travel mode section for text version
         travel_mode = email_content.get("travel_mode")
         mobility = email_content.get("mobility")
-        if travel_mode and travel_mode != "fixed":
-            mode_labels = {
-                "road_trip": "Come muoversi in loco",
-                "van_life": "Vita in van",
-                "sailing": "Navigazione",
-            }
-            if travel_mode in mode_labels:
-                lines.append("")
-                lines.append(mode_labels[travel_mode] + ":")
-                mode_descriptions = {
-                    "road_trip": "Il viaggio è pensato come road trip: tappe giornaliere con distanze gestibili, soste per il pranzo e pernottamenti lungo il percorso.",
-                    "van_life": "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri selezionati lungo il percorso.",
-                    "sailing": "Il viaggio si svolge in barca: porti di imbarco, marine per il noleggio, rotte costiere con ancoraggi sicuri.",
-                }
-                lines.append(mode_descriptions[travel_mode])
-                if mobility:
-                    lines.append(f"Mezzi: {', '.join(mobility)}")
-
-        if mobility and (not travel_mode or travel_mode == "fixed"):
+        travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
+        mode_labels = {
+            "road_trip": "Come muoversi in loco",
+            "van_life": "Vita in van",
+            "sailing": "Navigazione",
+        }
+        mode_descriptions = {
+            "road_trip": "Il viaggio è pensato come road trip: tappe giornaliere con distanze gestibili, soste per il pranzo e pernottamenti lungo il percorso.",
+            "van_life": "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri selezionati lungo il percorso.",
+            "sailing": "Il viaggio si svolge in barca: porti di imbarco, marine per il noleggio, rotte costiere con ancoraggi sicuri.",
+        }
+        if travel_mode_lower in mode_labels:
+            lines.append("")
+            lines.append(mode_labels[travel_mode_lower] + ":")
+            lines.append(mode_descriptions[travel_mode_lower])
+            if mobility:
+                lines.append(f"Mezzi: {', '.join(mobility)}")
+        elif mobility:
             lines.append("")
             lines.append(f"Come spostarti: {', '.join(mobility)}")
 
@@ -437,7 +482,10 @@ class TripOrchestrator:
                 effective_travel_mode = "road_trip" if legacy == "auto" else "van_life"
             elif legacy == "treno":
                 effective_travel_mode = "road_trip"  # treno = fixed base, but no flights needed
-        if effective_travel_mode in FLIGHT_BLOCKING_TRAVEL_MODES:
+        dep_cont = _continent(trip.departure_location)
+        dest_cont = _continent(destination or intent.destination or trip.destination or "")
+        is_intercontinental = dep_cont and dest_cont and dep_cont != dest_cont
+        if effective_travel_mode in FLIGHT_BLOCKING_TRAVEL_MODES and not is_intercontinental:
             skipped_reason = f"travel_mode:{effective_travel_mode}"
         else:
             departures = departure_codes or _valid_iata([intent.departure_airport_code])
@@ -606,6 +654,13 @@ class TripOrchestrator:
 
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
+        from src.core.feedback_token import make_token
+        from src.settings import get_settings
+
+        settings = get_settings()
+        base = getattr(settings, "feedback_base_url", "https://xen-ia.github.io/nostos")
+        token = make_token(self._trip_id, settings.api_token or "dev-secret", ttl_days=settings.feedback_token_ttl_days)
+        content["feedback_link"] = f"{base}/feedback.html?trip_id={self._trip_id}&token={token}"
         content["sections_map"] = {
             "flights": [r["link"] for r in curated["flights"] if r.get("link")],
             "places": [r["link"] for r in curated["places"] if r.get("link")],

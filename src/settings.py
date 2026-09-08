@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b-instruct"
 
+    # STT
+    stt_model: str = "gpt-transcribe"
+    stt_max_mb: int = 25
+    feedback_token_ttl_days: int = 7
+    feedback_base_url: str = "https://xen-ia.github.io/nostos"
+
     # Email
     resend_api_key: str = ""
     email_from_address: str = "Nostos <onboarding@resend.dev>"

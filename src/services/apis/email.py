@@ -135,7 +135,7 @@ _TRAVEL_MODE_BLOCKS = {
 
 
 def _render_travel_mode_block(travel_mode: str | None, mobility: list[str] | None) -> str:
-    if not travel_mode or travel_mode == "fixed":
+    if not travel_mode or travel_mode.lower() == "fixed":
         return ""
     tm = travel_mode.lower()
     if tm not in _TRAVEL_MODE_BLOCKS:
@@ -171,7 +171,12 @@ def build_html_email(content: dict) -> str:
     travel_mode = content.get("travel_mode")
     mobility = content.get("mobility")
     travel_mode_html = _render_travel_mode_block(travel_mode, mobility)
-    mobility_html = _render_mobility_inline(mobility)
+    if travel_mode_html:
+        mobility_html = ""
+    else:
+        mobility_html = _render_mobility_inline(mobility)
+    feedback_link = content.get("feedback_link") or ""
+    feedback_html = f'<div style="text-align:center;margin-top:18px;"><a href="{_e(feedback_link)}" style="display:inline-block;padding:10px 18px;border:1px solid #B58026;border-radius:999px;color:#B58026;font-size:13px;text-decoration:none;">Lascia un feedback</a></div>' if feedback_link else ""
     return load_email_template().safe_substitute(
         opening=_e(content["opening"]),
         understanding=_e(content["understanding"]),
@@ -184,6 +189,7 @@ def build_html_email(content: dict) -> str:
         signature_greeting=_e(SIGNATURE_GREETING),
         signature_name=_e(SIGNATURE_NAME),
         signature_role=_e(SIGNATURE_ROLE),
+        feedback_link=feedback_html,
     )
 
 
