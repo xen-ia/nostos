@@ -609,6 +609,144 @@
     cursor: pointer;
   }
 
+  /* ---- voice composer (dettatura free_text) ---- */
+
+  .mic-btn {
+    margin-left: 0.5rem;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 50%;
+    border: 1.5px solid var(--terracotta-deep);
+    background: #FCF9EF;
+    color: var(--terracotta-deep);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    vertical-align: middle;
+    transition: background 0.15s ease, transform 0.15s ease;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mic-btn:hover { background: rgba(217,164,74,0.18); }
+  .mic-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+  }
+  .mic-btn.is-recording {
+    background: var(--terracotta-deep);
+    border-color: var(--terracotta-deep);
+    color: #FCF9EF;
+  }
+  .mic-btn .rec-dot {
+    display: none;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    background: #E2574C;
+    animation: rec-pulse 1s ease-in-out infinite;
+  }
+  .mic-btn.is-recording .mic-icon { display: none; }
+  .mic-btn.is-recording .rec-dot { display: block; }
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
+  }
+
+  .composer-wrap { position: relative; }
+  .voice-interim {
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--ink-muted);
+    margin-top: 0.35rem;
+  }
+  .voice-interim[hidden] { display: none; }
+  .composer-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.25rem;
+    min-height: 1rem;
+  }
+  .free-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+  }
+  .free-count[hidden] { display: none; }
+
+  .voicebar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1.5px solid rgba(217,164,74,0.55);
+    border-radius: 10px;
+    background: rgba(217,164,74,0.08);
+  }
+  .voicebar[hidden] { display: none; }
+  #voice-wave { flex-shrink: 0; }
+  #voice-timer {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--terracotta-deep);
+    min-width: 2.2rem;
+  }
+  #voice-hint {
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+    flex: 1;
+    min-width: 0;
+  }
+  #voice-hint.is-cancel { color: #A83A28; font-weight: 600; }
+  #voice-lock {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--terracotta-deep);
+    background: #FCF9EF;
+    border: 1.5px solid var(--terracotta-deep);
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    min-height: 2.25rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+  }
+  #voice-lock:hover { background: rgba(217,164,74,0.18); }
+  #voice-lock:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+  }
+
+  .voice-error {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--terracotta-deep);
+    background: rgba(168,62,40,0.08);
+    border: 1px solid rgba(168,62,40,0.4);
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    margin-top: 0.5rem;
+  }
+  .voice-error[hidden] { display: none; }
+  .voice-error a { color: var(--terracotta-deep); font-weight: 600; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
   /* ---- feedback widget ---- */
 
   #feedback {
@@ -944,9 +1082,20 @@
       </div>
 
       <div class="field full">
-        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" aria-label="Detta con microfono" style="margin-left:0.5rem;width:1.9rem;height:1.9rem;border-radius:50%;border:1.5px solid var(--terracotta-deep);background:#FCF9EF;color:var(--terracotta-deep);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;line-height:1;padding:0;flex-shrink:0;transition:background 0.15s ease,transform 0.15s ease;">🎤</button></label>
-        <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done"></textarea>
-        <div id="mic-status" hidden style="font-size:0.8rem;color:var(--terracotta);margin-top:0.35rem;">Registrazione in corso… clicca per fermare</div>
+        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false"><rect x="7.5" y="2.5" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 9.5a5 5 0 0 0 10 0M10 14.5V17M7.5 17h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="rec-dot" aria-hidden="true"></span></button></label>
+        <div class="composer-wrap">
+          <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done" maxlength="5000"></textarea>
+          <div id="voice-interim" class="voice-interim" aria-hidden="true" hidden></div>
+          <div class="composer-foot"><span id="free-count" class="free-count" hidden></span></div>
+        </div>
+        <div class="voicebar" id="voicebar" hidden>
+          <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
+          <span id="voice-timer" role="timer">0:00</span>
+          <span id="voice-hint">Tieni premuto · trascina per annullare</span>
+          <button type="button" id="voice-lock" aria-label="Blocca registrazione"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>Blocca</span></button>
+        </div>
+        <div id="voice-error" class="voice-error" role="alert" hidden></div>
+        <div id="voice-live-region" class="sr-only" aria-live="polite"></div>
         <div class="chips">
           <button type="button" class="chip" data-text="trekking e natura">
             <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
@@ -1329,6 +1478,7 @@
     hoverDate = null;
     updateTrigger();
     closeCalendar();
+    freeText.dispatchEvent(new Event("input", { bubbles: true }));
     ALTRO_FIELDS.forEach(({ select, input }) => {
       select.value = select.options[0].value;
       input.hidden = true;
@@ -1347,37 +1497,474 @@
       } else {
         freeText.value = current.replace(new RegExp(`,?\\s*${fragment}`), "").trim();
       }
+      freeText.dispatchEvent(new Event("input", { bubbles: true }));
     });
   });
 
-  // ---- STT microfono per free_text ----
+  // ---- voice composer: tieni premuto per dettare (Web Speech live, fallback batch STT) ----
   const micBtn = document.getElementById("mic-btn");
-  const micStatus = document.getElementById("mic-status");
-  let recorder, chunks=[];
-  micBtn.addEventListener("click", async ()=>{
-    if(recorder && recorder.state==="recording"){
-      recorder.stop(); return;
+  const voicebar = document.getElementById("voicebar");
+  const voiceWave = document.getElementById("voice-wave");
+  const voiceTimer = document.getElementById("voice-timer");
+  const voiceHint = document.getElementById("voice-hint");
+  const voiceLock = document.getElementById("voice-lock");
+  const voiceError = document.getElementById("voice-error");
+  const voiceLiveRegion = document.getElementById("voice-live-region");
+  const voiceInterim = document.getElementById("voice-interim");
+  const freeCount = document.getElementById("free-count");
+
+  const HINT_DEFAULT = "Tieni premuto · trascina per annullare";
+  const HINT_CANCEL = "Rilascia per annullare";
+  const HINT_LOCKED = "Bloccato · tocca il microfono per finire";
+  const HINT_TRANSCRIBING = "Trascrizione…";
+  const CANCEL_PX = 60;
+  const LOCK_AFTER_MS = 1000;
+  const FREE_MAX = 5000;
+  const FREE_WARN = 4500;
+
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+  const voice = {
+    state: "idle", // idle | holding | locked | stopping
+    cancelArmed: false,
+    engine: null, // "live" | "batch"
+    rec: null,
+    recorder: null,
+    stream: null,
+    audioCtx: null,
+    analyser: null,
+    freqBuf: null,
+    waveRaf: 0,
+    timerId: 0,
+    startedAt: 0,
+    startX: 0,
+    startY: 0,
+    snapshot: "",
+    stopIntentional: false,
+    keyHolding: false,
+  };
+
+  function announce(msg){ voiceLiveRegion.textContent = msg; }
+
+  function setHint(text, cancel){
+    voiceHint.textContent = text;
+    voiceHint.classList.toggle("is-cancel", !!cancel);
+  }
+
+  function fmtTimer(ms){
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function startTimer(){
+    voice.startedAt = Date.now();
+    voiceTimer.textContent = "0:00";
+    stopTimer();
+    voice.timerId = setInterval(() => {
+      voiceTimer.textContent = fmtTimer(Date.now() - voice.startedAt);
+    }, 250);
+  }
+
+  function stopTimer(){
+    if (voice.timerId){ clearInterval(voice.timerId); voice.timerId = 0; }
+  }
+
+  function drawWave(){
+    const ctx = voiceWave.getContext("2d");
+    const W = voiceWave.width, H = voiceWave.height;
+    const bars = 24, gap = 2;
+    const bw = (W - gap * (bars - 1)) / bars;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = voice.cancelArmed ? "#A83A28" : "#9A4A2A";
+    let levels = null;
+    if (voice.analyser && voice.freqBuf){
+      voice.analyser.getByteFrequencyData(voice.freqBuf);
+      levels = voice.freqBuf;
     }
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-      recorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/mp4"});
-      chunks=[];
-      recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
-      recorder.onstop= async ()=>{
-        micStatus.hidden=true; micBtn.disabled=true; micBtn.textContent="⏳";
-        const blob = new Blob(chunks, {type: recorder.mimeType});
-        const fd = new FormData(); fd.append("audio", blob, "audio.webm");
-        try{
-          const res = await fetch(`${API_BASE}/stt`, {method:"POST", body: fd});
-          if(!res.ok) throw new Error(await res.text());
-          const {text} = await res.json();
-          freeText.value = freeText.value ? freeText.value + " " + text : text;
-        }catch(err){ statusEl.className="is-error"; statusEl.textContent="Errore trascrizione: "+err.message; }
-        finally{ micBtn.disabled=false; micBtn.textContent="🎤"; stream.getTracks().forEach(t=>t.stop()); }
+    const t = Date.now();
+    for (let i = 0; i < bars; i++){
+      let frac;
+      if (levels){
+        frac = levels[Math.floor(i * levels.length / bars / 2)] / 255;
+        frac = Math.max(frac, 0.08);
+      } else {
+        frac = 0.15 + 0.75 * Math.abs(Math.sin(t / 320 + i * 0.7));
+      }
+      const h = Math.max(2, frac * H);
+      ctx.fillRect(i * (bw + gap), (H - h) / 2, bw, h);
+    }
+    voice.waveRaf = requestAnimationFrame(drawWave);
+  }
+
+  function startWave(){
+    stopWave();
+    voice.waveRaf = requestAnimationFrame(drawWave);
+  }
+
+  function stopWave(){
+    if (voice.waveRaf){ cancelAnimationFrame(voice.waveRaf); voice.waveRaf = 0; }
+    const ctx = voiceWave.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, voiceWave.width, voiceWave.height);
+  }
+
+  // ---- auto-grow + contatore ----
+  function updateCounter(){
+    const n = freeText.value.length;
+    if (n > FREE_WARN){
+      freeCount.hidden = false;
+      freeCount.textContent = `${n}/${FREE_MAX}`;
+    } else {
+      freeCount.hidden = true;
+      freeCount.textContent = "";
+    }
+  }
+
+  function autogrow(){
+    freeText.style.height = "auto";
+    const lh = parseFloat(getComputedStyle(freeText).lineHeight) || 24;
+    freeText.style.height = Math.min(freeText.scrollHeight, 7 * lh) + "px";
+    updateCounter();
+  }
+
+  freeText.addEventListener("input", autogrow);
+
+  // Inserimento undo-safe nel punto del cursore (Ctrl+Z dopo il rilascio annulla l'aggiunta).
+  function commitText(chunk){
+    if (!chunk) return;
+    const sep = (freeText.value && !/\s$/.test(freeText.value)) ? " " : "";
+    const start = (freeText.selectionStart !== null && freeText.selectionStart !== undefined)
+      ? freeText.selectionStart : freeText.value.length;
+    const end = (freeText.selectionEnd !== null && freeText.selectionEnd !== undefined)
+      ? freeText.selectionEnd : freeText.value.length;
+    freeText.focus();
+    freeText.setRangeText(sep + chunk, start, end, "end");
+    freeText.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function restoreSnapshot(){
+    freeText.value = voice.snapshot;
+    freeText.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function cleanupAudio(){
+    if (voice.recorder && voice.recorder.state !== "inactive"){
+      try { voice.recorder.stop(); } catch {}
+    }
+    voice.recorder = null;
+    voice.rec = null;
+    if (voice.stream){
+      voice.stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+      voice.stream = null;
+    }
+    if (voice.audioCtx){
+      try { voice.audioCtx.close(); } catch {}
+      voice.audioCtx = null;
+      voice.analyser = null;
+      voice.freqBuf = null;
+    }
+  }
+
+  function endSessionUI(){
+    stopTimer();
+    stopWave();
+    cleanupAudio();
+    voicebar.hidden = true;
+    micBtn.classList.remove("is-recording");
+    micBtn.setAttribute("aria-pressed", "false");
+    voiceInterim.hidden = true;
+    voiceInterim.textContent = "";
+    setHint(HINT_DEFAULT, false);
+    voice.state = "idle";
+    voice.cancelArmed = false;
+    voice.engine = null;
+    voice.keyHolding = false;
+  }
+
+  function showPermissionError(){
+    voiceError.hidden = false;
+    voiceError.innerHTML = "";
+    voiceError.appendChild(document.createTextNode(
+      "Microfono bloccato: consenti l'accesso al microfono per usare la dettatura. "
+    ));
+    const link = document.createElement("a");
+    link.href = "https://support.google.com/chrome/answer/2693767?hl=it";
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Come abilitare il microfono";
+    voiceError.appendChild(link);
+  }
+
+  function abortSession(){
+    voice.stopIntentional = true;
+    if (voice.rec){ try { voice.rec.stop(); } catch {} }
+    endSessionUI();
+  }
+
+  // ---- motore live: Web Speech ----
+  function startLiveRec(){
+    try {
+      const rec = new SpeechRec();
+      rec.lang = "it-IT";
+      rec.interimResults = true;
+      rec.continuous = true;
+      rec.onresult = (e) => {
+        if (voice.state !== "holding" && voice.state !== "locked") return;
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++){
+          const r = e.results[i];
+          const chunk = r[0].transcript.trim();
+          if (r.isFinal){
+            if (chunk) commitText(chunk);
+          } else if (chunk){
+            interim += (interim ? " " : "") + chunk;
+          }
+        }
+        if (interim){
+          voiceInterim.hidden = false;
+          voiceInterim.textContent = interim;
+        } else {
+          voiceInterim.hidden = true;
+          voiceInterim.textContent = "";
+        }
       };
-      recorder.start(); micStatus.hidden=false; micBtn.textContent="⏹️";
-    }catch(err){ statusEl.className="is-error"; statusEl.textContent="Microfono non disponibile: "+err.message; }
+      rec.onerror = (e) => {
+        const code = (e && e.error) || "";
+        if (code === "not-allowed" || code === "service-not-allowed"){
+          showPermissionError();
+          abortSession();
+        } else if (code === "network"){
+          voiceError.hidden = false;
+          voiceError.textContent = "Connessione persa, testo parziale salvato · Riprova";
+        }
+        // "no-speech", "aborted", "audio-capture": ignora, onend riprova se serve
+      };
+      rec.onend = () => {
+        voiceInterim.hidden = true;
+        voiceInterim.textContent = "";
+        // Chrome mette in pausa da solo: riparti finché l'utente tiene premuto
+        if ((voice.state === "holding" || voice.state === "locked") && !voice.stopIntentional){
+          try { rec.start(); } catch {}
+        }
+      };
+      voice.rec = rec;
+      rec.start();
+    } catch {
+      voice.engine = "batch";
+      startBatchRec();
+    }
+  }
+
+  function attachAnalyser(stream){
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      voice.audioCtx = new AC();
+      const src = voice.audioCtx.createMediaStreamSource(stream);
+      voice.analyser = voice.audioCtx.createAnalyser();
+      voice.analyser.fftSize = 64;
+      voice.freqBuf = new Uint8Array(voice.analyser.frequencyBinCount);
+      src.connect(voice.analyser);
+    } catch {}
+  }
+
+  // ---- motore batch: MediaRecorder → POST /api/v1/stt ----
+  async function startBatchRec(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (voice.state !== "holding" && voice.state !== "locked"){
+        stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        return;
+      }
+      voice.stream = stream;
+      attachAnalyser(stream);
+      const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm"))
+        ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      recorder.onstop = () => { transcribeBatch(new Blob(chunks, { type: recorder.mimeType })); };
+      voice.recorder = recorder;
+      recorder.start();
+    } catch (err){
+      if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")){
+        showPermissionError();
+      } else {
+        voiceError.hidden = false;
+        voiceError.textContent = "Microfono non disponibile: " + (err && err.message ? err.message : err);
+      }
+      abortSession();
+    }
+  }
+
+  async function transcribeBatch(blob){
+    setHint(HINT_TRANSCRIBING, false);
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, "audio.webm");
+      const res = await fetch(`${API_BASE}/stt`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const { text } = await res.json();
+      if (voice.cancelArmed){
+        restoreSnapshot();
+        announce("Registrazione annullata");
+      } else if (text && text.trim()){
+        commitText(text.trim());
+        announce("Testo aggiunto");
+      }
+    } catch {
+      voiceError.hidden = false;
+      voiceError.textContent = "Connessione persa, testo parziale salvato · Riprova";
+    } finally {
+      endSessionUI();
+    }
+  }
+
+  async function startSession(){
+    if (voice.state !== "idle") return;
+    voiceError.hidden = true;
+    voiceError.textContent = "";
+    voice.snapshot = freeText.value;
+    voice.cancelArmed = false;
+    voice.stopIntentional = false;
+    voice.state = "holding";
+    voicebar.hidden = false;
+    micBtn.classList.add("is-recording");
+    micBtn.setAttribute("aria-pressed", "true");
+    setHint(HINT_DEFAULT, false);
+    startTimer();
+    startWave();
+    announce("Registrazione avviata");
+    if (SpeechRec){
+      voice.engine = "live";
+      startLiveRec();
+    } else {
+      voice.engine = "batch";
+      await startBatchRec();
+    }
+  }
+
+  function enterLocked(){
+    if (voice.state !== "holding" || voice.cancelArmed) return;
+    voice.state = "locked";
+    setHint(HINT_LOCKED, false);
+  }
+
+  // Rilascio normale: ferma e conferma il testo.
+  function finishRelease(){
+    if (voice.state !== "holding" && voice.state !== "locked") return;
+    voice.state = "stopping";
+    voice.stopIntentional = true;
+    if (voice.engine === "live" && voice.rec){
+      try { voice.rec.stop(); } catch {}
+      endSessionUI();
+      announce("Testo aggiunto");
+    } else if (voice.recorder && voice.recorder.state === "recording"){
+      voice.recorder.stop(); // onstop → transcribeBatch → endSessionUI
+    } else {
+      endSessionUI();
+    }
+  }
+
+  // Rilascio in zona annulla (o Esc): scarta tutto ciò che è stato dettato.
+  function cancelRelease(){
+    if (voice.state !== "holding" && voice.state !== "locked" && voice.state !== "stopping") return;
+    voice.cancelArmed = true;
+    voice.stopIntentional = true;
+    if (voice.engine === "live" || !voice.recorder){
+      if (voice.rec){ try { voice.rec.stop(); } catch {} }
+      restoreSnapshot();
+      endSessionUI();
+      announce("Registrazione annullata");
+    } else if (voice.recorder && voice.recorder.state === "recording"){
+      voice.recorder.stop(); // onstop → transcribeBatch scarta via snapshot
+    } else {
+      // trascrizione già in corso: transcribeBatch vedrà cancelArmed e scarterà
+    }
+  }
+
+  // Press-and-hold (Pointer Events: mouse, touch, penna).
+  micBtn.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button > 0) return;
+    if (voice.state !== "idle") return; // in locked lo stop è via tap (click)
+    e.preventDefault();
+    try { micBtn.setPointerCapture(e.pointerId); } catch {}
+    voice.startX = e.clientX;
+    voice.startY = e.clientY;
+    startSession();
   });
+
+  micBtn.addEventListener("pointermove", (e) => {
+    if (voice.state !== "holding") return;
+    const dx = e.clientX - voice.startX;
+    const up = voice.startY - e.clientY;
+    if (Math.abs(dx) > CANCEL_PX && Math.abs(dx) >= Math.abs(up)){
+      if (!voice.cancelArmed){
+        voice.cancelArmed = true;
+        setHint(HINT_CANCEL, true);
+      }
+    } else if (up > CANCEL_PX){
+      enterLocked();
+    } else if (voice.cancelArmed && Math.abs(dx) <= CANCEL_PX){
+      voice.cancelArmed = false;
+      setHint(HINT_DEFAULT, false);
+    }
+  });
+
+  micBtn.addEventListener("pointerup", () => {
+    if (voice.state === "locked") return; // resta bloccato: tap per finire
+    if (voice.state !== "holding") return;
+    if (voice.cancelArmed) cancelRelease();
+    else finishRelease();
+  });
+
+  micBtn.addEventListener("pointercancel", () => {
+    if (voice.state === "holding" || voice.state === "locked") cancelRelease();
+  });
+
+  // In locked: tap sul microfono per fermare.
+  micBtn.addEventListener("click", () => {
+    if (voice.state === "locked") finishRelease();
+  });
+
+  // Tap su Blocca dopo 1s di hold → locked.
+  voiceLock.addEventListener("click", () => {
+    if (voice.state === "holding" && Date.now() - voice.startedAt > LOCK_AFTER_MS) enterLocked();
+  });
+
+  // Tastiera: Spazio registra sul #mic-btn focalizzato, Esc annulla.
+  micBtn.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && !e.repeat){
+      if (voice.state === "idle"){
+        e.preventDefault();
+        voice.keyHolding = true;
+        startSession();
+      } else if (voice.state === "locked"){
+        e.preventDefault();
+        finishRelease();
+      }
+    }
+    if (e.key === "Escape" && (voice.state === "holding" || voice.state === "locked")){
+      e.preventDefault();
+      cancelRelease();
+    }
+  });
+
+  micBtn.addEventListener("keyup", (e) => {
+    if (e.code === "Space" && voice.keyHolding){
+      e.preventDefault();
+      voice.keyHolding = false;
+      if (voice.state === "holding") finishRelease();
+      // se nel frattempo è scattato il lock, resta bloccato
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && (voice.state === "holding" || voice.state === "locked" || voice.state === "stopping")){
+      cancelRelease();
+    }
+  });
+
+  autogrow();
 
   // ---- pattern "Altro": select con value "" rivela un input di testo ----
   const travelModeSelect = document.getElementById("travel_mode");
@@ -1532,6 +2119,7 @@
     hoverDate = null;
     updateTrigger();
     closeCalendar();
+    freeText.dispatchEvent(new Event("input", { bubbles: true }));
     ALTRO_FIELDS.forEach(({ select, input }) => {
       select.value = select.options[0].value;
       input.hidden = true;

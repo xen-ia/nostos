@@ -18,33 +18,34 @@ def test_valid_payload():
 
 def test_invalid_email():
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="not-an-email")
+        TripCreateRequest(email="not-an-email", destination="Tokyo")
 
 
 def test_travelers_count_zero_rejected():
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="a@b.com", travelers_count=0)
+        TripCreateRequest(email="a@b.com", destination="Tokyo", travelers_count=0)
 
 
 def test_travelers_count_over_cap_rejected():
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="a@b.com", travelers_count=21)
+        TripCreateRequest(email="a@b.com", destination="Tokyo", travelers_count=21)
 
 
 def test_invalid_travelers_type_rejected():
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="a@b.com", travelers_type="gruppone")
+        TripCreateRequest(email="a@b.com", destination="Tokyo", travelers_type="gruppone")
 
 
 def test_invalid_date_rejected():
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="a@b.com", start_date="01/09/2026")
+        TripCreateRequest(email="a@b.com", destination="Tokyo", start_date="01/09/2026")
 
 
 def test_end_before_start_rejected():
     with pytest.raises(ValidationError):
         TripCreateRequest(
             email="a@b.com",
+            destination="Tokyo",
             start_date="2026-09-10",
             end_date="2026-09-01",
         )
@@ -53,6 +54,7 @@ def test_end_before_start_rejected():
 def test_end_equal_start_accepted():
     trip = TripCreateRequest(
         email="a@b.com",
+        destination="Tokyo",
         start_date="2026-09-10",
         end_date="2026-09-10",
     )
@@ -65,15 +67,16 @@ def test_free_text_capped():
 
 
 def test_nullable_fields_default_none():
-    trip = TripCreateRequest(email="a@b.com")
+    trip = TripCreateRequest(email="a@b.com", free_text="sogno il mare")
     assert trip.destination is None
     assert trip.start_date is None
-    assert trip.free_text == ""
+    assert trip.free_text == "sogno il mare"
 
 
 def test_structured_inputs_accepted():
     trip = TripCreateRequest(
         email="a@b.com",
+        destination="Tokyo",
         flexible_dates=True,
         budget_amount="max 1500 EUR a persona",
         travel_mode="van",
@@ -86,7 +89,7 @@ def test_structured_inputs_accepted():
 
 
 def test_structured_inputs_default_none():
-    trip = TripCreateRequest(email="a@b.com")
+    trip = TripCreateRequest(email="a@b.com", destination="Tokyo")
     assert trip.flexible_dates is False
     assert trip.budget_amount is None
     assert trip.travel_mode is None
@@ -102,4 +105,4 @@ def test_structured_inputs_default_none():
 )
 def test_invalid_literal_inputs_rejected(field, value):
     with pytest.raises(ValidationError):
-        TripCreateRequest(email="a@b.com", **{field: value})
+        TripCreateRequest(email="a@b.com", destination="Tokyo", **{field: value})
