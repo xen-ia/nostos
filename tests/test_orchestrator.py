@@ -531,28 +531,6 @@ async def test_gate_empty_resources_on_both_attempts_fails_without_email(monkeyp
     assert len([p for p, m in llm.calls if m is EmailContent]) == 2
 
 
-def test_continent_helper():
-    from src.core.orchestrator import _continent
-
-    assert _continent("Italy") == "europe"
-    assert _continent("Italia") == "europe"
-    assert _continent("Patagonia") == "south_america"
-    assert _continent("Argentina") == "south_america"
-    assert _continent("Cile") == "south_america"
-    assert _continent("Chile") == "south_america"
-    assert _continent("Brasile") == "south_america"
-    assert _continent("Peru") == "south_america"
-    assert _continent("USA") == "north_america"
-    assert _continent("Giappone") == "asia"
-    assert _continent("Japan") == "asia"
-    assert _continent("Thailand") == "asia"
-    assert _continent("Australia") == "oceania"
-    assert _continent("Italy") != _continent("Patagonia")
-    assert _continent(None) is None
-    assert _continent("") is None
-    assert _continent("UnknownPlaceXYZ") is None
-
-
 import pytest
 
 
@@ -560,8 +538,9 @@ import pytest
 async def test_intercontinental_forces_flights(monkeypatch):
     from src.core.models import ResolvedDestinations, ResolvedPlace
 
-    # van_life normally blocks flights, but Italy -> Patagonia is intercontinental -> flights must be probed
-    intent = TripIntent(destination="Patagonia", travel_mode="van_life")
+    # LLM decision drives flights: needs_flights=true probes even for van_life
+    intent = TripIntent(destination="Patagonia", travel_mode="van_life",
+                        needs_flights=True, flight_rationale="Volo per arrivare")
     trip = make_trip(departure_location="Italy", destination="Patagonia")
     store = make_store()
     await store.create(trip)
@@ -587,16 +566,17 @@ async def test_intercontinental_forces_flights(monkeypatch):
     tool_calls: list[dict] = []
     result = await orchestrator._execute_searches(trip, intent, [], [("2026-09-01", "2026-09-10")], [], tool_calls, resolved=resolved, departure_codes=["MXP"])
 
-    assert flight_called, "flights should be probed for intercontinental van_life"
+    assert flight_called, "flights should be probed when needs_flights=true"
     assert result["geo"]["skipped_flights_reason"] is None
     assert not any(tc.get("skipped") for tc in tool_calls if tc.get("engine") == "google_flights")
 
 
 @pytest.mark.asyncio
-async def test_same_continent_van_life_skips_flights(monkeypatch):
+async def test_needs_flights_false_skips_flights(monkeypatch):
     from src.core.models import ResolvedDestinations, ResolvedPlace
 
-    intent = TripIntent(destination="Francia", travel_mode="van_life")
+    intent = TripIntent(destination="Francia", travel_mode="van_life",
+                        needs_flights=False, flight_rationale="Van da casa, niente volo")
     trip = make_trip(departure_location="Italy", destination="Francia")
     store = make_store()
     await store.create(trip)
@@ -622,6 +602,6 @@ async def test_same_continent_van_life_skips_flights(monkeypatch):
     tool_calls: list[dict] = []
     result = await orchestrator._execute_searches(trip, intent, [], [("2026-09-01", "2026-09-10")], [], tool_calls, resolved=resolved, departure_codes=["MXP"])
 
-    assert flight_called == [], "flights should be skipped for same-continent van_life"
-    assert result["geo"]["skipped_flights_reason"] == "travel_mode:van_life"
-    assert any(tc.get("skipped") and tc.get("reason") == "travel_mode:van_life" for tc in tool_calls)
+    assert flight_called == [], "flights should be skipped when needs_flights=false"
+    assert result["geo"]["skipped_flights_reason"] == "no_flights_needed"
+    assert any(tc.get("skipped") and tc.get("reason") == "no_flights_needed" for tc in tool_calls)

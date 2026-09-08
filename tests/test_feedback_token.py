@@ -33,32 +33,3 @@ def test_token_roundtrip():
 
     # malformed token fails
     assert not verify_token("not-a-valid-token", "trip-123", "secret")
-
-
-def test_continent_helper_and_intercontinental():
-    from src.core.orchestrator import _continent
-
-    # cover required keys
-    assert _continent("Italy") == "europe"
-    assert _continent("Patagonia") == "south_america"
-    assert _continent("Italia") == "europe"
-    assert _continent("Argentina") == "south_america"
-    assert _continent("Cile") == "south_america"
-    assert _continent("Chile") == "south_america"
-    assert _continent("Brasile") == "south_america"
-    assert _continent("Peru") == "south_america"
-    assert _continent("USA") == "north_america"
-    assert _continent("Giappone") == "asia"
-    assert _continent("Japan") == "asia"
-    assert _continent("Thailand") == "asia"
-    assert _continent("Australia") == "oceania"
-    # intercontinental detection
-    dep = _continent("Italy")
-    dest = _continent("Patagonia")
-    is_intercontinental = dep and dest and dep != dest
-    assert is_intercontinental is True
-    # same continent not intercontinental
-    assert _continent("Italy") == _continent("Francia")
-    dep2 = _continent("Italy")
-    dest2 = _continent("Francia")
-    assert not (dep2 and dest2 and dep2 != dest2)

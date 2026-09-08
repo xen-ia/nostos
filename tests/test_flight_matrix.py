@@ -134,11 +134,16 @@ async def test_stay_preference_steers_places_query(monkeypatch):
     assert place_queries[-1] == "agriturismo stays in Caraibi"
 
 
-# --- C3 gate: travel_mode blocks all flight probes ---
+# --- Flight decision: the LLM decides per trip (needs_flights), code only executes ---
 
 
 async def test_van_trip_skips_all_flight_probes(monkeypatch):
+    from src.core.models import TripIntent
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10", travel_mode="van")
+    intent = TripIntent(destination="Caraibi", departure_airport_code="MXP",
+                        destination_airport_code="HND", travel_mode="van_life",
+                        needs_flights=False, flight_rationale="Van da casa, niente volo")
+    llm = FakeLLM(response=intent, email_response=EMAIL)
     calls = []
 
     async def fake_flights(*args, **kwargs):
@@ -147,12 +152,12 @@ async def test_van_trip_skips_all_flight_probes(monkeypatch):
 
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     db = FakeDatabase()
-    await _run(trip, _make_llm(), db)
+    await _run(trip, llm, db)
 
-    assert calls == [], "travel_mode van must execute zero probes"
+    assert calls == [], "needs_flights=false must execute zero probes"
     skips = [tc for tc in db.saved[0]["package"]["tool_calls"] if tc.get("engine") == "google_flights"]
-    assert skips == [{"engine": "google_flights", "skipped": True, "reason": "travel_mode:van_life"}]
-    assert db.saved[0]["package"]["geo"]["skipped_flights_reason"] == "travel_mode:van_life"
+    assert skips == [{"engine": "google_flights", "skipped": True, "reason": "no_flights_needed"}]
+    assert db.saved[0]["package"]["geo"]["skipped_flights_reason"] == "no_flights_needed"
 
 
 async def test_missing_airports_after_geo_planning_skips_probes(monkeypatch):

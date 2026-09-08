@@ -9,4 +9,6 @@ def test_no_duplicate_mobility_when_van_life():
 def test_mobility_only_when_fixed():
     content = {"opening":"x","understanding":"y","resources":[],"cta":"c","honest_note":"n","travel_mode":"fixed","mobility":["auto"],"sections_map":{},"appendix":{"groups":[],"source_links":[]}}
     html = build_html_email(content)
-    assert "Come spostarti" in html
+    assert "Come spostarti" not in html
+    assert html.count("Mezzi") == 1  # single merged mobility line, no separate section
+    assert "auto" in html

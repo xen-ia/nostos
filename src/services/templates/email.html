@@ -12,7 +12,7 @@
     :root { color-scheme: light dark; supported-color-schemes: light dark; }
     body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
     table { border-collapse: collapse; }
-    table.card-frame, table.cta-frame, table.hairline-frame { border-collapse: separate !important; border-spacing: 0; }
+    table.card-frame, table.cta-frame, table.hairline-frame, table.btn-frame { border-collapse: separate !important; border-spacing: 0; }
     a { text-decoration: none; }
 
     @media (prefers-color-scheme: dark) {
@@ -36,6 +36,7 @@
     @media only screen and (max-width: 520px) {
       .gutter { padding-left: 22px !important; padding-right: 22px !important; }
       .lead { font-size: 19px !important; }
+      .btn-cell { display: block !important; width: 100% !important; padding-bottom: 12px !important; }
     }
   </style>
 </head>
@@ -80,6 +81,13 @@
               </td>
             </tr>
 
+            <!-- Come arrivare: volo hero -->
+            <tr>
+              <td class="gutter" style="padding:0 36px;">
+                $arrival_section
+              </td>
+            </tr>
+
             <!-- Selezione -->
             <tr>
               <td class="gutter" style="padding:40px 36px 0;">
@@ -95,24 +103,17 @@
               </td>
             </tr>
 
-            <!-- Sezione modalità viaggio (road_trip/van_life/sailing) -->
+            <!-- Box modalità viaggio + mobilità (singolo blocco) -->
             <tr>
               <td class="gutter" style="padding:0 36px;">
-                $travel_mode_section
+                $travel_box
               </td>
             </tr>
 
-            <!-- Sezione mobilità inline -->
-            <tr>
-              <td class="gutter" style="padding:0 36px;">
-                $mobility_section
-              </td>
-            </tr>
-
-            <!-- Fonti esplorate -->
+            <!-- Fonti -->
             <tr>
               <td class="gutter" style="padding:20px 36px 0;">
-                $appendix
+                $sources_section
               </td>
             </tr>
 
@@ -130,7 +131,8 @@
               </td>
             </tr>
 
-            <tr><td class="gutter" style="padding:0 36px;">$feedback_link</td></tr>
+            <!-- Azioni: rispondi + feedback (rendered only when links exist) -->
+            $button_row
 
             <!-- Firma -->
             <tr>
@@ -154,8 +156,9 @@
                 <div class="d-hairline" style="border-top:1px solid #D0DDE9;line-height:1px;font-size:0;margin-bottom:18px;">&nbsp;</div>
                 <div class="d-gold" style="font-family:'Fraunces',Georgia,serif;font-size:13px;font-style:italic;color:#B58026;letter-spacing:0.5px;">Nostos &middot; viaggi su misura</div>
                 <div style="margin-top:8px;">
-                  <a href="https://xen-ia.github.io/nostos" target="_blank" class="d-muted" style="font-family:'IBM Plex Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:0.5px;color:#4E6071;text-decoration:underline;">xen-ia.github.io/nostos</a>
+                  <a href="$footer_url" target="_blank" class="d-muted" style="font-family:'IBM Plex Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:0.5px;color:#4E6071;text-decoration:underline;">$footer_url_visible</a>
                 </div>
+                <div class="d-muted" style="font-family:'IBM Plex Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:0.5px;color:#4E6071;margin-top:4px;">$footer_url_visible</div>
               </td>
             </tr>
 
