@@ -109,6 +109,15 @@ def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks:
     Rules: pick by merit for THIS brief — quality and fit, never filler. Zero items in a
     category is a valid choice when nothing fits. For travel_mode 'van_life' prefer van/camping
     stays; for 'sailing' prefer boat stays; for 'road_trip' prefer stops along route.
+    If the maps corpus is non-empty, include at least one POI matching the traveler's
+    interests unless none fits at all; an email with only a flight and no place to see
+    is a failure.
+    Diversity: no two cards from the same hotel chain / same airline-route; spread picks
+    across areas instead of clustering in one spot.
+    Interest-match: every POI pick must tie to at least one stated interest; name the
+    matched interest in the rationale.
+    Quality preference: prefer rating 4.0 or above unless an item fits uniquely well —
+    state the exception in the rationale.
     IMPORTANT: For intercontinental or long-distance trips (different country/continent from departure),
     ALWAYS include at least one flight option if available. For 'fixed' travel_mode, flights are the
     primary way to reach the destination — prioritize them.
@@ -189,6 +198,9 @@ def build_email_prompt(
     - If travel_mode is 'road_trip' or 'van_life': include a "Come muoversi" section explaining the route logic, daily drives, overnight stops; do NOT list bare flight links if they don't fit the mode.
     - If travel_mode is 'sailing': include a "Navigazione" section with ports, charter info, coastal hops.
     - If accommodation_style is 'van' or 'camping': show overnight stops/campsites, not hotel cards.
+    - Flight resource `name` must be human-shaped — "Volo {{airline}} {{from}} → {{to}}"
+      (e.g. "Volo easyJet Milano → Inverness") — with date/price details in `description`,
+      never the raw data line above.
     - NEVER print internal IDs like [M0], [P2] in the email — cite only bracket IDs from the RESOURCES above.
     - If mobility includes 'auto'/'moto'/'barca': weave a short practical paragraph about getting around locally.
     """
