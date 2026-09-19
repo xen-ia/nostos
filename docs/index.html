@@ -631,6 +631,9 @@
     background: transparent;
     border-radius: 8px 8px 0 0;
     padding-right: 3rem;
+    /* Niente grip nativo: collide con il mic in basso a destra e l'auto-grow
+       copre già il ridimensionamento (il grip non si può spostare via CSS). */
+    resize: none;
   }
   .composer-box textarea:focus {
     border: none;
@@ -1640,7 +1643,9 @@
   function drawWave(){
     const ctx = sizeWaveCanvas();
     const W = voiceWave.clientWidth, H = voiceWave.clientHeight;
-    const bars = 24, gap = 2;
+    // Densità costante su ogni viewport: ~16px per barra (come su mobile),
+    // altrimenti su box larghi da PC le 24 barre fisse sembrano rade.
+    const bars = Math.max(16, Math.min(40, Math.round(W / 16))), gap = 2;
     const bw = (W - gap * (bars - 1)) / bars;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = voice.cancelArmed ? "#A83A28" : "#9A4A2A";
