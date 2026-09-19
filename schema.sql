@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     trip_id UUID NOT NULL REFERENCES trip_history (id),
     rating INTEGER CHECK (rating BETWEEN 1 AND 5),
-    note TEXT,
     comment TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -60,6 +59,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_trip_id ON feedback (trip_id);
 -- unique trip_id so a trip has at most one feedback (upsert target).
 ALTER TABLE feedback ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS comment TEXT;
+
+-- Upgrade: drop unused note column (never written)
+ALTER TABLE feedback DROP COLUMN IF EXISTS note;
 
 CREATE TABLE IF NOT EXISTS email_whitelist (
     email TEXT PRIMARY KEY,

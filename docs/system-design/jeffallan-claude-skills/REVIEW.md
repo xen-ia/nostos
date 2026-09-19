@@ -317,7 +317,7 @@ POST /api/v1/trips ──▶ Trip (request + stato operativo) ──(dopo il pro
 |---|---|---|---|
 | `Trip` | id, status, request fields, result | Redis (`trip:{id}`, TTL 24h) | transitorio |
 | `TripHistory` | id, email, dates, package_json, email_subject/body | Postgres (`trip_history`) | durevole |
-| `Feedback` | trip_id, rating, note | Postgres (`feedback`) | durevole, **nessun endpoint** |
+| `Feedback` | trip_id, rating, comment | Postgres (`feedback`) | durevole, **nessun endpoint** |
 
 Oggi le prime due sono la **stessa risorsa** vista in due store (FA-3/F3): `Trip` è lo
 stato operativo, `TripHistory` la storia durevole. L'API espone solo `Trip`, e dopo 24h
