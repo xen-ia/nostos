@@ -43,11 +43,14 @@ async def test_places_empty_retries_generic_query(monkeypatch):
     intent = TripIntent(destination="Shetland", accommodation_style="van", travel_mode="van_life")
     db = FakeDatabase()
     await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
-    assert len(queries) == 2
+    assert len(queries) == 3
     assert queries[1].startswith("hotels in ")
+    # van trip (A3): one extra rental query after the generic retry
+    assert queries[2].startswith("noleggio camper van ")
     hotels_calls = [tc for tc in db.saved[0]["package"]["tool_calls"]
                     if tc.get("engine") == "google_hotels"]
-    assert len(hotels_calls) == 2
+    assert len(hotels_calls) == 3
+    assert hotels_calls[-1]["params"].get("rental") is True
 
 
 async def test_places_retry_without_destination_uses_bare_hotels(monkeypatch):

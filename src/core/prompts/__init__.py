@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+import re
 
 from src.core.models import TripIntent
 from src.core.schemas import TripResponse
@@ -91,6 +92,18 @@ def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: s
 
 
 def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks: str) -> str:
+    interests = [i for i in intent.interests if (i or "").strip()]
+    if interests:
+        interest_rule = (
+            "Interest-match: every POI pick must tie to at least one stated interest; "
+            "name the matched interest in the rationale."
+        )
+    else:
+        interest_rule = (
+            "Interests is empty: match POIs instead on travel_mode + "
+            "accommodation_style + destination — pick places that fit how this "
+            "traveler moves, sleeps, and where they go."
+        )
     return f"""Select the best resources for this traveler from the numbered corpus below.
 
     TRIP CONTEXT:
@@ -106,16 +119,18 @@ def build_curation_prompt(trip: TripResponse, intent: TripIntent, corpus_blocks:
     CORPUS (numbered with zero-based indices in brackets; reference ONLY these indices):
     {corpus_blocks}
 
-    Rules: pick by merit for THIS brief — quality and fit, never filler. Zero items in a
-    category is a valid choice when nothing fits. For travel_mode 'van_life' prefer van/camping
-    stays; for 'sailing' prefer boat stays; for 'road_trip' prefer stops along route.
-    If the maps corpus is non-empty, include at least one POI matching the traveler's
-    interests unless none fits at all; an email with only a flight and no place to see
-    is a failure.
+    Rules: pick by merit for THIS brief — quality and fit, never filler.
+    Zero items in a category is a valid choice when nothing fits.
+    For van trips (travel_mode 'van_life' or accommodation_style 'van'): campsites and rentals first;
+    plain hotels are NOT stays-picks. If curated places is empty, the stays section is absent, period.
+    For 'sailing' prefer boat stays; for 'road_trip' prefer stops along route.
+    If the maps corpus is non-empty, include at least one POI fitting the traveler (per
+    the interest-match rule below) unless none fits at all; an email with only a flight
+    and no place to see is a failure.
+    An email with a non-empty maps corpus and zero POI picks is a failure — prefer ≥1 fitting POI whenever the corpus allows.
     Diversity: no two cards from the same hotel chain / same airline-route; spread picks
     across areas instead of clustering in one spot.
-    Interest-match: every POI pick must tie to at least one stated interest; name the
-    matched interest in the rationale.
+    {interest_rule}
     Quality preference: prefer rating 4.0 or above unless an item fits uniquely well —
     state the exception in the rationale.
     IMPORTANT: For intercontinental or long-distance trips (different country/continent from departure),
@@ -168,6 +183,15 @@ def build_email_prompt(
     trip: TripResponse | None = None,
     resolve_rationale: str = "",
 ) -> str:
+    travel_mode = (intent.travel_mode or "").lower()
+    grounded_stops = len(re.findall(r"\[(?:M|P)\d+\]", f"{maps_block}\n{places_block}"))
+    route_rule = ""
+    if travel_mode in ("road_trip", "van_life") and grounded_stops >= 2:
+        route_rule = (
+            "\n    - Route articulation (road/van trip with ≥2 grounded stops): include a short "
+            "day-by-day articulation grounded ONLY in the picked POI/stay resources above "
+            '(e.g. "giorno 1-2: X → Y"); never generic filler like "alternate short drives".'
+        )
     return f"""Write the trip email for this traveler.
 
     TRIP CONTEXT (only these preferences exist — never invent others):
@@ -198,9 +222,10 @@ def build_email_prompt(
     - If travel_mode is 'road_trip' or 'van_life': include a "Come muoversi" section explaining the route logic, daily drives, overnight stops; do NOT list bare flight links if they don't fit the mode.
     - If travel_mode is 'sailing': include a "Navigazione" section with ports, charter info, coastal hops.
     - If accommodation_style is 'van' or 'camping': show overnight stops/campsites, not hotel cards.
-    - Flight resource `name` must be human-shaped — "Volo {{airline}} {{from}} → {{to}}"
-      (e.g. "Volo easyJet Milano → Inverness") — with date/price details in `description`,
-      never the raw data line above.
+    - The travel paragraph may name ONLY places present in RESOURCES; never invent services (water, drains, fuel, rentals).
+    - Flight resource `name` must be human-shaped — "Volo {{airline}} · {{from}} – {{to}}"
+      (e.g. "Volo easyJet · Milano – Inverness") — with date/price details in `description`,
+      never the raw data line above.{route_rule}
     - NEVER print internal IDs like [M0], [P2] in the email — cite only bracket IDs from the RESOURCES above.
     - If mobility includes 'auto'/'moto'/'barca': weave a short practical paragraph about getting around locally.
     """
