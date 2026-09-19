@@ -10,6 +10,10 @@ from src.settings import Settings
 
 router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
 
+# Polling budget for GET /{trip_id}/status/public: 40 req/min covers the 3s frontend
+# cadence (20/min) plus refresh / second tab. See note at the endpoint.
+STATUS_PUBLIC_LIMIT = 40
+
 
 @router.post("/admin/reset", status_code=403)
 async def honeypot(_auth: None = Depends(require_api_token)):
@@ -146,11 +150,13 @@ async def get_trip_status_public(
     db=Depends(get_database),
 ):
     """Public trip status endpoint (no auth, no PII). Reads status from Redis (real-time), enriches with email fields from Postgres when done/error."""
-    settings: Settings = request.app.state.settings
+    # Dedicated cap, decoupled from the global abuse limit: the frontend polls every 3s
+    # (20/min + headroom for refresh / second tab). Cheap Redis read; do not lower this
+    # to "harden" the API or polling breaks mid-trip with 429 loops.
     public_limiter = RateLimiter(
         request.app.state.redis,
-        max_requests=min(20, settings.rate_limit_max),
-        window_seconds=settings.rate_limit_window_seconds,
+        max_requests=STATUS_PUBLIC_LIMIT,
+        window_seconds=request.app.state.settings.rate_limit_window_seconds,
     )
     await public_limiter.check(rate_limit_key(request))
 
