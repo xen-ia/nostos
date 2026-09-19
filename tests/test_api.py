@@ -334,3 +334,16 @@ def test_free_text_only_brief_accepted():
     with TestClient(app) as client:
         resp = client.post("/api/v1/trips", json={"email": "t@t.example", "free_text": "sogno il mare"})
     assert resp.status_code == 202
+
+
+async def test_status_public_decoupled_from_global_limit():
+    """Polling (20/min at 3s cadence) must survive a tiny global abuse limit."""
+    from tests.fakes import make_trip
+
+    app, store, _ = make_app(rate_limit_max=2, window=60)
+    trip = await store.create(make_trip())
+    with TestClient(app) as client:
+        for _ in range(5):
+            r = client.get(f"/api/v1/trips/{trip.id}/status/public")
+            assert r.status_code == 200
+            assert r.json()["status"] == "pending"

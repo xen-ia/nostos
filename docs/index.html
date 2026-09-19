@@ -179,6 +179,118 @@
 
   .field .opt { font-weight: 400; color: var(--ink-muted); }
 
+  /* ---- batch 1: sezioni, microcopy, pill obbligatorio, errori inline ---- */
+
+  .form-section {
+    border-top: 1px solid rgba(217,164,74,0.35);
+    padding-top: 1.25rem;
+    margin-top: 1.75rem;
+  }
+  .form-section:first-of-type { margin-top: 0; }
+  .form-section .field-group {
+    border-top: none;
+    padding-top: 0;
+  }
+  .form-section-title {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--terracotta-deep);
+    margin: 0 0 1rem;
+  }
+
+  .req-pill {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-style: normal;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #FCF9EF;
+    background: var(--terracotta);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+  }
+
+  .field-hint {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--ink-muted);
+    margin: 0;
+  }
+
+  .submit-note {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--ink-muted);
+    margin: 0.85rem 0 0;
+  }
+
+  .field.field-error input,
+  .field.field-error select,
+  .field.field-error textarea,
+  .field.field-error .date-trigger,
+  .field.field-error .composer-box {
+    border-color: var(--terracotta);
+  }
+  .field.field-error input:focus,
+  .field.field-error select:focus,
+  .field.field-error textarea:focus,
+  .field.field-error .date-trigger:focus-visible {
+    border-color: var(--terracotta);
+    box-shadow: 0 0 0 3px rgba(193,104,61,0.25);
+  }
+  .field.field-error .composer-box:focus-within {
+    border-color: var(--terracotta);
+    box-shadow: 0 0 0 3px rgba(193,104,61,0.25);
+  }
+  .field-error-msg {
+    font-size: 0.8rem;
+    color: var(--terracotta-deep);
+    margin: 0;
+  }
+
+  #stop-waiting {
+    display: block;
+    margin: 0.9rem auto 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    color: var(--gold);
+    background: transparent;
+    border: 1px solid rgba(217,164,74,0.55);
+    padding: 0.5rem 1.4rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  #stop-waiting[hidden] { display: none; }
+  #stop-waiting:hover { background: rgba(217,164,74,0.12); transform: translateY(-1px); }
+  #stop-waiting:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(217,164,74,0.35); }
+
+  #fb-ask {
+    max-width: 640px;
+    margin: 1.25rem auto 0;
+    text-align: center;
+    animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  #fb-ask[hidden] { display: none; }
+  #fb-reveal {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--terracotta-deep);
+    background: #FCF9EF;
+    border: 1.5px solid var(--border);
+    padding: 0.6rem 1.6rem;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 8px 16px -8px rgba(0,0,0,0.3);
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  #fb-reveal:hover { transform: translateY(-1px); border-color: var(--gold); background: #FFFDF5; }
+  #fb-reveal:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(217,164,74,0.35); }
+
   input[type="text"], input[type="email"], input[type="date"], input[type="number"],
   select, textarea {
     font-family: 'IBM Plex Sans', sans-serif;
@@ -613,6 +725,29 @@
     cursor: pointer;
   }
 
+  /* ---- batch 2: calendar hint, voice affordance, altro preview ---- */
+
+  .cal-hint {
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+    margin: 0 0 0.6rem;
+  }
+
+  .voice-affordance {
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    margin: 0.5rem 0 0;
+  }
+
+  .altro-preview {
+    grid-column: 1 / -1;
+    font-size: 0.82rem;
+    font-style: italic;
+    color: var(--ink-muted);
+    margin: 0.75rem 0 0;
+  }
+  .altro-preview[hidden] { display: none; }
+
   /* ---- voice composer (dettatura free_text, inglobata nel box) ---- */
 
   .composer-box {
@@ -972,7 +1107,7 @@
   @media (prefers-reduced-motion: reduce) {
     .masthead, .hero h1, .hero p,
     .ticket, .chip, #status, .calendar, body::before,
-    #feedback, #fb-thanks,
+    #feedback, #fb-thanks, #fb-ask,
     .compass-rings, .needle, .mic-btn.is-recording {
       animation: none !important;
     }
@@ -1036,158 +1171,187 @@
   </div>
 
   <form class="ticket" id="trip-form" autocomplete="off">
-    <div class="field-group">
-      <div class="field full">
-        <label for="email">La tua email</label>
-        <input type="email" id="email" required placeholder="nome@esempio.com" autocomplete="email" inputmode="email" enterkeyhint="next">
-      </div>
-
-      <div class="field">
-        <label for="destination">Dove vuoi andare?</label>
-        <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto" autocomplete="off">
-      </div>
-
-      <div class="field date-field">
-        <label for="date-trigger">Quando?</label>
-        <button type="button" class="date-trigger" id="date-trigger"
-                aria-haspopup="dialog" aria-expanded="false" aria-controls="calendar">
-          <span class="date-trigger-label" id="date-trigger-label">Scegli le date</span>
-          <svg class="chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-            <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <input type="hidden" id="start_date" name="start_date">
-        <input type="hidden" id="end_date" name="end_date">
-        <div class="calendar" id="calendar" role="dialog" aria-label="Scegli le date del viaggio" hidden>
-          <div class="calendar-head">
-            <button type="button" class="cal-nav" id="cal-prev" aria-label="Mese precedente">‹</button>
-            <span class="cal-title" id="cal-title"></span>
-            <button type="button" class="cal-nav" id="cal-next" aria-label="Mese successivo">›</button>
-          </div>
-          <div class="calendar-grid" id="calendar-grid"></div>
-          <div class="calendar-foot">
-            <span class="cal-legend" id="cal-legend"></span>
-            <button type="button" class="cal-clear" id="cal-clear">Cancella</button>
-          </div>
-        </div>
-        <div class="flexible-row" id="flexible-row" hidden>
-          <input type="checkbox" id="flexible_dates">
-          <label for="flexible_dates">Date flessibili (ottimizziamo sui costi)</label>
+    <div class="form-section">
+      <h2 class="form-section-title">Contatto</h2>
+      <div class="field-group">
+        <div class="field full">
+          <label for="email">La tua email</label>
+          <input type="email" id="email" required placeholder="nome@esempio.com" autocomplete="email" inputmode="email" enterkeyhint="next">
         </div>
       </div>
+    </div>
 
-      <div class="field">
-        <label for="travelers_count">Con chi parti?</label>
-        <div class="people-row">
-          <span class="stepper">
-            <button type="button" id="people-minus" aria-label="Diminuisci viaggiatori">−</button>
-            <input type="number" id="travelers_count" min="1" value="1" inputmode="numeric" autocomplete="off" aria-label="Numero di viaggiatori">
-            <button type="button" id="people-plus" aria-label="Aumenta viaggiatori">+</button>
-          </span>
-          <select id="travelers_type">
-            <option value="solo">Da solo</option>
-            <option value="coppia">In coppia</option>
-            <option value="famiglia">In famiglia</option>
-            <option value="amici">Con amici</option>
-            <option value="gruppo">Gruppo</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="departure_location">Parti da</label>
-        <input type="text" id="departure_location" placeholder="Es. Milano" autocomplete="off" enterkeyhint="next">
-      </div>
-
-      <div class="field full">
-        <label for="budget_amount">Budget <span class="opt">(facoltativo)</span></label>
-        <input type="text" id="budget_amount" placeholder="Es. max 1500 EUR" autocomplete="off" enterkeyhint="next">
-      </div>
-
-      <div class="field">
-        <label for="travel_mode">Come preferisci muoverti?</label>
-        <select id="travel_mode">
-          <option value="indifferente" selected>Non importa</option>
-          <option value="volo">Volo</option>
-          <option value="treno">Treno</option>
-          <option value="auto">Auto</option>
-          <option value="van">Van / road trip</option>
-          <option value="">Altro…</option>
-        </select>
-        <input type="text" class="altro-input" id="travel_mode_altro" placeholder="es. barca a vela…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica come preferisci muoverti">
-      </div>
-
-      <div class="field">
-        <label for="stay_preference">Dove preferisci dormire?</label>
-        <select id="stay_preference">
-          <option value="indifferente" selected>Non importa</option>
-          <option value="hotel">Hotel</option>
-          <option value="b&b">B&amp;B</option>
-          <option value="agriturismo">Agriturismo</option>
-          <option value="glamping">Glamping</option>
-          <option value="camping">Camping</option>
-          <option value="">Altro…</option>
-        </select>
-        <input type="text" class="altro-input" id="stay_preference_altro" placeholder="es. monastero, rifugio…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica dove preferisci dormire">
-      </div>
-
-      <div class="field full">
-        <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
-        <div class="composer-box" id="composer-box">
-          <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done" maxlength="5000"></textarea>
-          <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><rect x="7.4" y="2.2" width="5.2" height="8.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 9.3a4.7 4.7 0 0 0 9.4 0M10 14v2.4M7.9 16.9h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
-          <div id="voice-interim" class="voice-interim" aria-hidden="true" hidden></div>
-          <div class="voice-row" id="voice-row" hidden>
-            <span id="voice-hint">Rilascia per inviare · trascina per annullare</span>
-            <div class="voice-actions">
-              <button type="button" id="voice-cancel" class="voice-cancel" aria-label="Annulla la registrazione"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-              <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
-              <span id="voice-timer" role="timer">0:00</span>
-              <button type="button" id="voice-lock" aria-label="Finisci la registrazione"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <div class="form-section">
+      <h2 class="form-section-title">Quando e con chi</h2>
+      <div class="field-group">
+        <div class="field date-field">
+          <label for="date-trigger">Quando? <span class="req-pill">Obbligatorio</span></label>
+          <button type="button" class="date-trigger" id="date-trigger"
+                  aria-haspopup="dialog" aria-expanded="false" aria-controls="calendar" aria-describedby="cal-legend">
+            <span class="date-trigger-label" id="date-trigger-label">Scegli le date</span>
+            <svg class="chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <input type="hidden" id="start_date" name="start_date">
+          <input type="hidden" id="end_date" name="end_date">
+          <div class="calendar" id="calendar" role="dialog" aria-label="Scegli le date del viaggio" hidden>
+            <div class="calendar-head">
+              <button type="button" class="cal-nav" id="cal-prev" aria-label="Mese precedente">‹</button>
+              <span class="cal-title" id="cal-title"></span>
+              <button type="button" class="cal-nav" id="cal-next" aria-label="Mese successivo">›</button>
+            </div>
+            <p class="cal-hint" id="cal-hint">Tocca la partenza, poi il ritorno.</p>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <div class="calendar-foot">
+              <span class="cal-legend" id="cal-legend"></span>
+              <button type="button" class="cal-clear" id="cal-clear">Cancella</button>
             </div>
           </div>
-          <div class="composer-foot"><span id="free-count" class="free-count" hidden></span></div>
+          <div class="flexible-row" id="flexible-row" hidden>
+            <input type="checkbox" id="flexible_dates">
+            <label for="flexible_dates">Date flessibili (ottimizziamo sui costi)</label>
+          </div>
         </div>
-        <div id="voice-error" class="voice-error" role="alert" hidden></div>
-        <div id="voice-live-region" class="sr-only" aria-live="polite"></div>
-        <div class="chips">
-          <button type="button" class="chip" data-text="trekking e natura">
-            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
-              <path d="M2.5 14.5 7 6.5l2.5 4 1.5-2.5 2.5 4 4-6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2.5 14.5h15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <span>Trekking</span>
-          </button>
-          <button type="button" class="chip" data-text="cibo e tradizioni locali">
-            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
-              <path d="M3 8a7 4.5 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M3 8h14M4.5 8l-.5 4a5 4 0 0 0 4 4h4a5 4 0 0 0 4-4l-.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M10 12.5v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <span>Cibo locale</span>
-          </button>
-          <button type="button" class="chip" data-text="storia e cultura">
-            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
-              <path d="M5 16.5V8a5 5 0 0 1 10 0v8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M3 16.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M7 8h2m2 0h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <span>Storia</span>
-          </button>
-          <button type="button" class="chip" data-text="mare e relax">
-            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
-              <path d="M2 8c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M2 12.5c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <span>Mare</span>
-          </button>
-          <button type="button" class="chip" data-text="ritmo lento, lontano dalle folle">
-            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
-              <path d="M3 10a7 7 0 1 0 14 0 7 7 0 1 0-14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M10 6.5V10l2.5 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Ritmo lento</span>
-          </button>
+
+        <div class="field">
+          <label for="travelers_count">Con chi parti?</label>
+          <div class="people-row">
+            <span class="stepper">
+              <button type="button" id="people-minus" aria-label="Diminuisci viaggiatori">−</button>
+              <input type="number" id="travelers_count" min="1" value="1" inputmode="numeric" autocomplete="off" aria-label="Numero di viaggiatori">
+              <button type="button" id="people-plus" aria-label="Aumenta viaggiatori">+</button>
+            </span>
+            <select id="travelers_type">
+              <option value="solo">Da solo</option>
+              <option value="coppia">In coppia</option>
+              <option value="famiglia">In famiglia</option>
+              <option value="amici">Con amici</option>
+              <option value="gruppo">Gruppo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="departure_location">Parti da</label>
+          <input type="text" id="departure_location" placeholder="Es. Milano" autocomplete="off" enterkeyhint="next">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2 class="form-section-title">Il viaggio che immagini</h2>
+      <div class="field-group">
+        <div class="field">
+          <label for="destination">Dove vuoi andare?</label>
+          <input type="text" id="destination" placeholder="Es. Puglia, o lascia vuoto" autocomplete="off">
+        </div>
+
+        <div class="field full">
+          <label for="budget_amount">Budget <span class="opt">(facoltativo)</span></label>
+          <select id="budget_amount">
+            <option value="" selected>Nessun limite</option>
+            <option value="max 1000 EUR">max 1000 EUR</option>
+            <option value="max 2000 EUR">max 2000 EUR</option>
+            <option value="max 4000 EUR">max 4000 EUR</option>
+            <option value="oltre 4000 EUR">oltre 4000 EUR</option>
+            <option value="custom">Altro…</option>
+          </select>
+          <label class="sr-only" for="budget_amount_custom">Specifica…</label>
+          <input type="text" class="altro-input" id="budget_amount_custom" placeholder="es. max 1500 EUR…" autocomplete="off" enterkeyhint="next" hidden>
+        </div>
+
+        <div class="field">
+          <label for="travel_mode">Come preferisci muoverti?</label>
+          <select id="travel_mode">
+            <option value="indifferente" selected>Non importa</option>
+            <option value="volo">Volo</option>
+            <option value="treno">Treno</option>
+            <option value="auto">Auto</option>
+            <option value="van">Van / road trip</option>
+            <option value="">Altro…</option>
+          </select>
+          <input type="text" class="altro-input" id="travel_mode_altro" placeholder="es. barca a vela…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica come preferisci muoverti">
+          <label class="sr-only" for="travel_mode_altro">Specifica…</label>
+        </div>
+
+        <div class="field">
+          <label for="stay_preference">Dove preferisci dormire?</label>
+          <select id="stay_preference">
+            <option value="indifferente" selected>Non importa</option>
+            <option value="hotel">Hotel</option>
+            <option value="b&b">B&amp;B</option>
+            <option value="agriturismo">Agriturismo</option>
+            <option value="glamping">Glamping</option>
+            <option value="camping">Camping</option>
+            <option value="">Altro…</option>
+          </select>
+          <input type="text" class="altro-input" id="stay_preference_altro" placeholder="es. monastero, rifugio…" autocomplete="off" enterkeyhint="next" hidden aria-label="Specifica dove preferisci dormire">
+          <label class="sr-only" for="stay_preference_altro">Specifica…</label>
+        </div>
+
+        <p class="altro-preview" id="altro-preview" hidden></p>
+
+        <div class="field full">
+          <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
+          <p class="field-hint">Basta la destinazione o due righe di racconto.</p>
+          <div class="composer-box" id="composer-box">
+            <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done" maxlength="5000"></textarea>
+            <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><rect x="7.4" y="2.2" width="5.2" height="8.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 9.3a4.7 4.7 0 0 0 9.4 0M10 14v2.4M7.9 16.9h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+            <div id="voice-interim" class="voice-interim" aria-hidden="true" hidden></div>
+            <div class="voice-row" id="voice-row" hidden>
+              <span id="voice-hint">Rilascia per inviare · trascina per annullare</span>
+              <div class="voice-actions">
+                <button type="button" id="voice-cancel" class="voice-cancel" aria-label="Annulla la registrazione"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+                <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
+                <span id="voice-timer" role="timer">0:00</span>
+                <button type="button" id="voice-lock" aria-label="Finisci la registrazione"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+            </div>
+            <div class="composer-foot"><span id="free-count" class="free-count" hidden></span></div>
+          </div>
+          <div id="voice-error" class="voice-error" role="alert" hidden></div>
+          <div id="voice-live-region" class="sr-only" aria-live="polite"></div>
+          <p class="voice-affordance" id="voice-affordance">Tieni premuto il microfono per dettare · un tocco per registrare senza tenere premuto</p>
+            <div class="chips">
+            <button type="button" class="chip" data-text="trekking e natura">
+              <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+                <path d="M2.5 14.5 7 6.5l2.5 4 1.5-2.5 2.5 4 4-6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2.5 14.5h15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span>Trekking</span>
+            </button>
+            <button type="button" class="chip" data-text="cibo e tradizioni locali">
+              <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+                <path d="M3 8a7 4.5 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M3 8h14M4.5 8l-.5 4a5 4 0 0 0 4 4h4a5 4 0 0 0 4-4l-.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M10 12.5v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span>Cibo locale</span>
+            </button>
+            <button type="button" class="chip" data-text="storia e cultura">
+              <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+                <path d="M5 16.5V8a5 5 0 0 1 10 0v8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3 16.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M7 8h2m2 0h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span>Storia</span>
+            </button>
+            <button type="button" class="chip" data-text="mare e relax">
+              <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+                <path d="M2 8c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M2 12.5c1.2-1.6 2.4-1.6 3.6 0s2.4 1.6 3.6 0 2.4-1.6 3.6 0 2.4 1.6 3.6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span>Mare</span>
+            </button>
+            <button type="button" class="chip" data-text="ritmo lento, lontano dalle folle">
+              <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false">
+                <path d="M3 10a7 7 0 1 0 14 0 7 7 0 1 0-14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M10 6.5V10l2.5 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Ritmo lento</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1205,11 +1369,17 @@
           <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <p class="submit-note">Ti scriviamo l'itinerario via mail, di solito entro un paio di minuti. Niente spam: solo il tuo viaggio.</p>
     </div>
   </form>
 
   <div id="status"></div>
+  <button type="button" id="stop-waiting" hidden>Smetti di attendere</button>
   <button type="button" id="new-search" hidden>Nuova ricerca</button>
+
+  <div id="fb-ask" hidden>
+    <button type="button" id="fb-reveal">Ho letto la mail, lascio un feedback</button>
+  </div>
 
   <div id="feedback" hidden>
     <p class="fb-title">Com'è andata? Lasciaci una valutazione</p>
@@ -1407,6 +1577,8 @@
       const hi = rangeStart < hoverDate ? hoverDate : rangeStart;
       if (dt > lo && dt < hi) btn.classList.add("in-range");
     }
+    if (btn.classList.contains("is-start") || btn.classList.contains("is-end") || btn.classList.contains("in-range")) btn.setAttribute("aria-selected", "true");
+    else btn.removeAttribute("aria-selected");
   }
 
   function refreshRangeClasses(){
@@ -1429,7 +1601,7 @@
     refreshRangeClasses();
     updateTrigger();
     updateLegend();
-    if (rangeStart && rangeEnd) closeCalendar();
+    if (rangeStart && rangeEnd) closeCalendar(true);
   }
 
   function fmtShort(d){
@@ -1485,10 +1657,15 @@
     renderCalendar();
     calendar.hidden = false;
     dateTrigger.setAttribute("aria-expanded", "true");
+    const key = rangeStart ? toKey(rangeStart) : _todayKey;
+    const target = calGrid.querySelector(`.cal-day[data-key="${key}"]:not([disabled])`)
+      || calGrid.querySelector(`.cal-day:not([disabled])`);
+    if (target) target.focus();
   }
-  function closeCalendar(){
+  function closeCalendar(returnFocus){
     calendar.hidden = true;
     dateTrigger.setAttribute("aria-expanded", "false");
+    if (returnFocus) dateTrigger.focus();
   }
 
   dateTrigger.addEventListener("click", () => {
@@ -1516,11 +1693,34 @@
 
   document.addEventListener("click", (e) => {
     if (!calendar.hidden && !dateTrigger.contains(e.target) && !calendar.contains(e.target)){
-      closeCalendar();
+      closeCalendar(true);
     }
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !calendar.hidden) closeCalendar();
+    if (e.key === "Escape" && !calendar.hidden) closeCalendar(true);
+  });
+
+  // Frecce sui giorni: ±1 giorno (Sx/Dx), ±7 giorni (Su/Giù), salta i disabilitati.
+  calendar.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" ? -7 : e.key === "ArrowDown" ? 7 : 0;
+    if (!step) return;
+    const btn = e.target && e.target.closest ? e.target.closest(".cal-day") : null;
+    if (!btn || !btn.dataset.key) return;
+    e.preventDefault();
+    const parts = btn.dataset.key.split("-").map(Number);
+    const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+    for (let i = 0; i < 40; i++){
+      dt.setDate(dt.getDate() + step);
+      const key = toKey(dt);
+      if (key < _todayKey) continue;
+      if (dt.getFullYear() !== viewYear || dt.getMonth() !== viewMonth){
+        viewYear = dt.getFullYear();
+        viewMonth = dt.getMonth();
+        renderCalendar();
+      }
+      const next = calGrid.querySelector(`.cal-day[data-key="${key}"]`);
+      if (next && !next.disabled){ next.focus(); return; }
+    }
   });
 
   window.addEventListener("pageshow", () => {
@@ -1538,6 +1738,10 @@
       input.hidden = true;
       input.value = "";
     });
+    budgetSelect.value = "";
+    budgetCustom.hidden = true;
+    budgetCustom.value = "";
+    updateAltroPreview();
     resetFeedbackUI();
   });
   
@@ -1594,6 +1798,7 @@
     startedAt: 0,
     startX: 0,
     startY: 0,
+    downAt: 0,
     snapshot: "",
     stopIntentional: false,
     keyHolding: false,
@@ -1953,6 +2158,7 @@
   function enterLocked(){
     if (voice.state !== "holding" || voice.cancelArmed) return;
     voice.state = "locked";
+    micBtn.classList.remove("is-hidden");
     setHint(HINT_LOCKED, false);
   }
 
@@ -2002,6 +2208,7 @@
     try { micBtn.setPointerCapture(e.pointerId); } catch {}
     voice.startX = e.clientX;
     voice.startY = e.clientY;
+    voice.downAt = Date.now();
     startSession();
   });
 
@@ -2022,11 +2229,20 @@
     }
   });
 
-  micBtn.addEventListener("pointerup", () => {
-    if (voice.state === "locked") return; // resta bloccato: chiusura via ✓
+  micBtn.addEventListener("pointerup", (e) => {
+    if (voice.state === "locked"){ finishRelease(); return; } // secondo tocco: conferma
     if (voice.state !== "holding") return;
-    if (voice.cancelArmed) cancelRelease();
-    else finishRelease();
+    if (voice.cancelArmed){ cancelRelease(); return; }
+    // tocco rapido senza trascinare: passa in locked (stessa macchina del blocco da slide)
+    const quick = Date.now() - (voice.downAt || 0) < 250;
+    const dx = (e && e.clientX !== undefined) ? e.clientX - voice.startX : 0;
+    const dy = (e && e.clientY !== undefined) ? e.clientY - voice.startY : 0;
+    if (quick && Math.hypot(dx, dy) < 10){
+      enterLocked();
+      announce(HINT_LOCKED);
+      return;
+    }
+    finishRelease();
   });
 
   micBtn.addEventListener("pointercancel", () => {
@@ -2095,7 +2311,41 @@
     select.addEventListener("change", () => {
       input.hidden = select.value !== "";
       if (input.hidden) input.value = "";
+      updateAltroPreview();
     });
+  });
+
+  // ---- budget: preset via select, "custom" rivela un input dedicato ----
+  const budgetSelect = document.getElementById("budget_amount");
+  const budgetCustom = document.getElementById("budget_amount_custom");
+  const altroPreview = document.getElementById("altro-preview");
+
+  budgetSelect.addEventListener("change", () => {
+    budgetCustom.hidden = budgetSelect.value !== "custom";
+    if (budgetCustom.hidden) budgetCustom.value = "";
+    updateAltroPreview();
+  });
+
+  // Anteprima unita: rende visibile ciò che verrà accodato al racconto.
+  function updateAltroPreview(){
+    const parts = [];
+    const modeText = travelModeAltro.value.trim();
+    if (travelModeSelect.value === "" && modeText) parts.push(`Viaggio: ${modeText}.`);
+    const stayText = stayPrefAltro.value.trim();
+    if (stayPrefSelect.value === "" && stayText) parts.push(`Soggiorno: ${stayText}.`);
+    const budgetText = budgetCustom.value.trim();
+    if (budgetSelect.value === "custom" && budgetText) parts.push(`Budget: ${budgetText}.`);
+    if (parts.length){
+      altroPreview.hidden = false;
+      altroPreview.textContent = `Verrà aggiunto al racconto: "${parts.join(" ")}"`;
+    } else {
+      altroPreview.hidden = true;
+      altroPreview.textContent = "";
+    }
+  }
+
+  [travelModeAltro, stayPrefAltro, budgetCustom].forEach((el) => {
+    el.addEventListener("input", updateAltroPreview);
   });
 
   // ---- date flessibili: visibile solo quando c'è una data di partenza ----
@@ -2127,6 +2377,9 @@
 
   const LS_KEY = "nostos_active_trip";
   const newSearchBtn = document.getElementById("new-search");
+  const stopWaitingBtn = document.getElementById("stop-waiting");
+  const fbAsk = document.getElementById("fb-ask");
+  const fbReveal = document.getElementById("fb-reveal");
 
   function saveActiveTrip(id){ try{ localStorage.setItem(LS_KEY, JSON.stringify({id, ts: Date.now()})); }catch{} }
   function clearActiveTrip(){ try{ localStorage.removeItem(LS_KEY); }catch{} }
@@ -2137,25 +2390,89 @@
     const start = document.getElementById("start_date").value;
     const dest = document.getElementById("destination").value.trim();
     const free = document.getElementById("free_text").value.trim();
-    if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Inserisci un'email valida";
-    if(!start) return "Scegli le date del viaggio";
-    if(!dest && !free) return "Indica una destinazione o descrivi il viaggio";
+    if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { id: "email", msg: "Inserisci un'email valida" };
+    if(!start) return { id: "start_date", msg: "Scegli le date del viaggio" };
+    if(!dest && !free) return { id: "brief", msg: "Indica una destinazione o descrivi il viaggio" };
     return null;
+  }
+
+  // elapsed dal submit: si aggiorna a ogni tick del poll, senza timer extra
+  let pollStartAt = null;
+
+  function fmtElapsed(ms){
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
   function renderStatus(status){
     statusEl.className = "";
-    statusEl.textContent = STATUS_COPY[status] || "Richiesta ricevuta, in coda…";
+    const base = STATUS_COPY[status] || "Richiesta ricevuta, in coda…";
+    statusEl.textContent = pollStartAt
+      ? `${base} · ${fmtElapsed(Date.now() - pollStartAt)}`
+      : base;
   }
 
   function stopPolling(){
     if (pollTimer){ clearTimeout(pollTimer); pollTimer = null; }
   }
 
+  // ---- errori inline: alone .field + riga di messaggio, oltre alla #status ----
+  const FIELD_FOR_ERROR = {
+    email: "email",
+    start_date: "date-trigger",
+    brief: "free_text",
+  };
+
+  function fieldForError(id){
+    const target = document.getElementById(FIELD_FOR_ERROR[id] || id);
+    return target ? target.closest(".field") : null;
+  }
+
+  function clearFieldError(field){
+    if (!field) return;
+    field.classList.remove("field-error");
+    const msg = field.querySelector(".field-error-msg");
+    if (msg) msg.remove();
+  }
+
+  function clearAllFieldErrors(){
+    document.querySelectorAll(".field.field-error").forEach(clearFieldError);
+  }
+
+  function showFieldError(err){
+    clearAllFieldErrors();
+    const field = fieldForError(err.id);
+    if (field){
+      field.classList.add("field-error");
+      let msg = field.querySelector(".field-error-msg");
+      if (!msg){
+        msg = document.createElement("p");
+        msg.className = "field-error-msg";
+        msg.setAttribute("role", "alert");
+        field.appendChild(msg);
+      }
+      msg.textContent = err.msg;
+      field.scrollIntoView({ behavior: "smooth", block: "center" });
+      const target = document.getElementById(FIELD_FOR_ERROR[err.id]);
+      if (target) target.focus({ preventScroll: true });
+    }
+    statusEl.className = "is-error";
+    statusEl.textContent = err.msg;
+  }
+
+  // l'errore si cancella appena si tocca il campo
+  document.getElementById("email").addEventListener("input", (e) => clearFieldError(e.target.closest(".field")));
+  startInput.addEventListener("change", () => clearFieldError(fieldForError("start_date")));
+  ["destination", "free_text"].forEach((fid) => {
+    document.getElementById(fid).addEventListener("input", () => clearFieldError(fieldForError("brief")));
+  });
+
   function resetFeedbackUI(){
     stopPolling();
     currentTripId = null;
+    clearAllFieldErrors();
     fbRating = 0;
+    if (fbAsk) fbAsk.hidden = true;
     feedbackEl.hidden = true;
     fbThanks.hidden = true;
     fbError.hidden = true;
@@ -2166,20 +2483,26 @@
 
   function onFinished(status, result){
     stopPolling();
+    if (stopWaitingBtn) stopWaitingBtn.hidden = true;
     if (status === "done"){
       statusEl.className = "is-done";
       const emailVal = document.getElementById("email").value.trim();
       statusEl.textContent =
-        "Tutto pronto! Ti abbiamo scritto a " +
+        "Ti abbiamo scritto a " +
         (emailVal || "la tua email") +
-        " con i primi spunti.";
-      feedbackEl.hidden = false;
+        ".";
+      // il widget resta nascosto finché l'utente conferma di aver letto la mail
+      feedbackEl.hidden = true;
+      if (fbAsk) fbAsk.hidden = false;
     } else {
       statusEl.className = "is-error";
       statusEl.textContent =
-        "Questa richiesta non è andata a buon fine. Riprova con una nuova richiesta.";
+        "Questa richiesta non è andata a buon fine. Riprova con una nuova richiesta. " +
+        "Puoi riprovare con una nuova ricerca — i tuoi dati restano nel modulo.";
+      if (fbAsk) fbAsk.hidden = true;
     }
     // keep localStorage until feedback sent or nuova ricerca; button stays visible
+    // (il modulo non si resetta mai qui: i dati restano per riprovare)
     if (newSearchBtn) newSearchBtn.hidden = false;
   }
 
@@ -2190,10 +2513,20 @@
       if (res.status === 404){
         clearActiveTrip();
         if (newSearchBtn) newSearchBtn.hidden = true;
+        if (stopWaitingBtn) stopWaitingBtn.hidden = true;
         statusEl.className = "is-error";
         statusEl.textContent = "Richiesta non trovata. Fai una nuova ricerca.";
         stopPolling();
         currentTripId = null;
+        return;
+      }
+      if (res.status === 429){
+        // Throttled: honor Retry-After instead of hammering the bucket at 3s cadence.
+        const raw = parseInt(res.headers.get("Retry-After") || "10", 10);
+        const wait_s = Math.min(Math.max(Number.isFinite(raw) ? raw : 10, 1), 30);
+        statusEl.className = "";
+        statusEl.textContent = `Traffico intenso, riprovo tra ${wait_s} secondi…`;
+        pollTimer = setTimeout(pollTrip, wait_s * 1000);
         return;
       }
       if (!res.ok) throw new Error(`Errore server: ${res.status}.`);
@@ -2201,6 +2534,7 @@
       if (trip.status === "pending" || trip.status === "running"){
         renderStatus(trip.status);
         if (newSearchBtn) newSearchBtn.hidden = false;
+        if (stopWaitingBtn) stopWaitingBtn.hidden = false;
         pollTimer = setTimeout(pollTrip, POLL_INTERVAL_MS);
       } else {
         onFinished(trip.status, trip.result);
@@ -2214,7 +2548,9 @@
 
   function startPolling(initialStatus){
     stopPolling();
+    pollStartAt = Date.now();
     if (newSearchBtn) newSearchBtn.hidden = false;
+    if (stopWaitingBtn) stopWaitingBtn.hidden = false;
     if (initialStatus === "done" || initialStatus === "error"){
       onFinished(initialStatus);
       return;
@@ -2226,6 +2562,7 @@
   function resetForNewSearch(){
     clearActiveTrip();
     stopPolling();
+    pollStartAt = null;
     currentTripId = null;
     form.reset();
     document.querySelectorAll(".chip.active").forEach(chip => chip.classList.remove("active"));
@@ -2240,19 +2577,40 @@
       input.hidden = true;
       input.value = "";
     });
+    budgetSelect.value = "";
+    budgetCustom.hidden = true;
+    budgetCustom.value = "";
+    updateAltroPreview();
     resetFeedbackUI();
     statusEl.className = "";
     statusEl.textContent = "";
+    if (stopWaitingBtn) stopWaitingBtn.hidden = true;
     if (newSearchBtn) newSearchBtn.hidden = true;
   }
 
   if (newSearchBtn) newSearchBtn.addEventListener("click", resetForNewSearch);
 
+  // attesa interrotta dall'utente: il viaggio continua lato server e la mail arriva comunque
+  if (stopWaitingBtn) stopWaitingBtn.addEventListener("click", () => {
+    stopPolling();
+    stopWaitingBtn.hidden = true;
+    statusEl.className = "";
+    statusEl.textContent = "Elaborazione in corso: ti scriviamo appena pronto.";
+    if (newSearchBtn) newSearchBtn.hidden = false;
+  });
+
+  if (fbReveal) fbReveal.addEventListener("click", () => {
+    if (fbAsk) fbAsk.hidden = true;
+    feedbackEl.hidden = false;
+  });
+
   window.addEventListener("DOMContentLoaded", ()=>{
     const saved = loadActiveTrip();
     if(saved && saved.id){
       currentTripId = saved.id;
+      pollStartAt = (saved && saved.ts) || Date.now();
       if (newSearchBtn) newSearchBtn.hidden = false;
+      if (stopWaitingBtn) stopWaitingBtn.hidden = false;
       // non abbiamo PII salvata, lascia email vuota
       pollTrip();
     }
@@ -2306,7 +2664,7 @@
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const err = validateForm();
-    if(err){ statusEl.className="is-error"; statusEl.textContent=err; return; }
+    if(err){ showFieldError(err); return; }
     resetFeedbackUI();
     submitBtn.disabled = true;
     submitBtn.classList.add("is-loading");
@@ -2331,7 +2689,7 @@
       travelers_type: document.getElementById("travelers_type").value,
       departure_location: document.getElementById("departure_location").value || null,
       free_text: payloadFreeText,
-      budget_amount: document.getElementById("budget_amount").value || null,
+      budget_amount: budgetSelect.value === "custom" ? (budgetCustom.value.trim() || null) : (budgetSelect.value || null),
       travel_mode: mode.value,
       stay_preference: stay.value,
     };
