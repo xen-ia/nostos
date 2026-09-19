@@ -57,10 +57,19 @@ def require_api_token(request: Request) -> None:
 
 
 def rate_limit_key(request: Request) -> str:
-    """Rate-limit key: per-IP, or per-token when authenticated."""
+    """Rate-limit key: per-token when authenticated, else per real client IP.
+
+    Behind Cloudflare `request.client.host` is an edge IP shared by all visitors,
+    so one shared bucket would throttle everybody. Cloudflare overwrites
+    `CF-Connecting-IP` itself, making it trustworthy for bucketing (it only buys
+    the holder more quota on public endpoints, no privilege).
+    """
     settings: Settings = request.app.state.settings
     auth = request.headers.get("Authorization", "")
     if auth and settings.api_token and auth.removeprefix("Bearer ").strip():
         return f"token:{auth.removeprefix('Bearer ').strip()}"
+    cf_ip = (request.headers.get("CF-Connecting-IP", "") or "").strip()
+    if cf_ip:
+        return f"ip:{cf_ip}"
     client = request.client.host if request.client else "unknown"
     return f"ip:{client}"
