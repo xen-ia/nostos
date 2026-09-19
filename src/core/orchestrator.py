@@ -263,8 +263,17 @@ class TripOrchestrator:
             lines.append(flight_line)
             lines.append(first["link"])
             lines.append("")
+        # Travel mode labels/descriptions mirror the HTML travel box one-liners.
+        travel_mode = email_content.get("travel_mode")
+        travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
+        is_van = travel_mode_lower == "van_life" or (email_content.get("accommodation_style") or "").lower() == "van"
+        base_listed = [r for r in resources if r.get("link") != hero_link] if hero_link else list(resources)
+        place_links = set(smap.get("places", []))
+        rentals = [r for r in base_listed
+                   if r.get("rental") and r.get("link") in place_links][:2] if is_van else []
+        rental_links = {r.get("link") for r in rentals}
         lines.append("Punti di partenza:")
-        listed = [r for r in resources if r.get("link") != hero_link] if hero_link else resources
+        listed = [r for r in base_listed if r.get("link") not in rental_links]
         for i, item in enumerate(listed, 1):
             entry = f"{i}. {item['name']}"
             if item.get("price"):
@@ -276,21 +285,31 @@ class TripOrchestrator:
 
         # Travel box one-liner mirroring the HTML hierarchy (no Mezzi line:
         # mobility info lives in the LLM prose, a bare vehicle list makes no sense).
-        travel_mode = email_content.get("travel_mode")
-        travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
+        # Neutral one-liners only: specifics come from grounded resource text.
         mode_labels = {
             "road_trip": "Come muoversi in loco",
             "van_life": "Vita in van",
             "sailing": "Navigazione",
         }
         mode_descriptions = {
-            "road_trip": "Il viaggio è pensato come road trip: tappe giornaliere con distanze gestibili, soste per il pranzo e pernottamenti lungo il percorso.",
-            "van_life": "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri selezionati lungo il percorso.",
-            "sailing": "Il viaggio si svolge in barca: porti di imbarco, marine per il noleggio, rotte costiere con ancoraggi sicuri.",
+            "road_trip": "Tappe giornaliere in auto, strada facendo.",
+            "van_life": "Itinerario su strada, pernottamenti a bordo.",
+            "sailing": "Rotte costiere in barca, tappe a terra.",
         }
         lines.append("")
         if travel_mode_lower in mode_labels:
             lines.append(f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}")
+        if rentals:
+            lines.append("")
+            lines.append("Dove noleggiare il van:")
+            for item in rentals:
+                entry = item["name"]
+                if item.get("price"):
+                    entry += f" — {item['price']}"
+                lines.append(entry)
+                if item.get("description"):
+                    lines.append(f"   {item['description']}")
+                lines.append(f"   {item['link']}")
 
         appendix = email_content.get("appendix", {})
         if appendix:
@@ -540,6 +559,22 @@ class TripOrchestrator:
                                   "check_out_date": check_out},
             )
 
+        # Van rental research: one extra places query, van trips only.
+        travel_mode = (intent.travel_mode or "").lower()
+        accommodation_style = (intent.accommodation_style or "").lower()
+        if destination and (travel_mode == "van_life" or accommodation_style == "van"):
+            rental_query = f"noleggio camper van {destination}"
+            rentals = await guarded(
+                places.search(destination=destination, query=rental_query,
+                              check_in_date=check_in, check_out_date=check_out,
+                              timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+                "google_hotels", {"q": rental_query, "check_in_date": check_in,
+                                  "check_out_date": check_out, "rental": True},
+            )
+            for rental in rentals:
+                rental["rental"] = True
+            stays = [*stays, *rentals]
+
         maps_items = [*anchors, *(i for lst in maps_results for i in lst)]
         linked_maps = [i for i in maps_items if i.get("link") and not _is_junk_link(i.get("link"))]
         dropped_junk = [i.get("name") for i in maps_items
@@ -635,10 +670,16 @@ class TripOrchestrator:
             "flights": pick(cur.flight_indices, corpus["flights"]),
             "maps": pick(cur.poi_indices, corpus["maps"]),
             "places": pick(cur.stay_indices, corpus["places"]),
+            "rationale": cur.rationale,
         }
-        if not any(curated.values()):
+        if not any([curated["flights"], curated["maps"], curated["places"]]):
             # merit fallback: keep corpus top items rather than aborting a researched trip
-            curated = {k: v[:3] for k, v in corpus.items()}
+            curated = {
+                "flights": corpus["flights"][:3],
+                "maps": corpus["maps"][:3],
+                "places": corpus["places"][:3],
+                "rationale": cur.rationale,
+            }
         return curated
 
     async def _compose_email(
@@ -686,6 +727,7 @@ class TripOrchestrator:
         content["appendix"] = self._build_appendix(
             research,
             exclude_links={r["link"] for r in content["resources"] if r.get("link")},
+            allowed_links=set(allowed.links),
         )
         # Pass intent fields for email template sections
         content["travel_mode"] = intent.travel_mode
@@ -698,12 +740,18 @@ class TripOrchestrator:
             "geo": research.get("geo", {}),
             "corpus": corpus,
             "curated": curated,
+            "curated_rationale": curated.get("rationale", ""),
             "tool_calls": research["tool_calls"],
         }
         return content, body_text, body_html, package
 
     @staticmethod
-    def _build_appendix(research: dict, exclude_links: set[str] | None = None) -> dict:
+    def _build_appendix(research: dict, exclude_links: set[str] | None = None,
+                        allowed_links: set[str] | None = None) -> dict:
+        """Sources backing SHOWN content only: curated (allowed) corpus links minus
+        every rendered link, capped at 3, junk-filtered. Uncurated corpus items
+        (e.g. random houses never picked) never surface here. `allowed_links=None`
+        keeps the legacy corpus-minus-rendered behavior (tests only)."""
         corpus = research["corpus"]
         excluded = set(exclude_links or ())
         excluded.add("https://xen-ia.github.io/nostos")
@@ -713,6 +761,8 @@ class TripOrchestrator:
             for it in items:
                 link = it.get("link")
                 if not link or _is_junk_link(link) or link in excluded:
+                    continue
+                if allowed_links is not None and link not in allowed_links:
                     continue
                 if link in (i["link"] for i in out):
                     continue
@@ -735,12 +785,13 @@ class TripOrchestrator:
                 groups.append((label, take))
 
         # Only include the winning flight link when not already shown
-        # (not all probed combinations).
+        # (not all probed combinations) and backed by the curation.
         source_links = []
         if corpus.get("flights") and remaining > 0:
             flight = corpus["flights"][0]
             if (flight.get("link") and not _is_junk_link(flight.get("link"))
-                    and flight["link"] not in excluded):
+                    and flight["link"] not in excluded
+                    and (allowed_links is None or flight["link"] in allowed_links)):
                 source_links.append({"name": flight.get("airline", "Volo selezionato"), "link": flight["link"]})
 
         return {

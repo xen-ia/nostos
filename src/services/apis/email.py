@@ -46,13 +46,26 @@ def _e(value: str) -> str:
 #: defensive renderer hardening only.
 _RAW_FLIGHT_RE = re.compile(r"departure \d{4}-\d{2}-\d{2}")
 
+#: Route fragments ("MXP -> INV", "Bergamo → Edimburgo") normalized to the
+#: elegant en-dash shape. The email is one-way prose: no arrows in flight names.
+_ARROW_RE = re.compile(r"\s*(?:->|→)\s*")
+_ROUTE_RE = re.compile(r"([^\s,]+)\s*(?:->|→)\s*([^\s,]+)")
+
 
 def _humanize_flight_name(name: str) -> str:
-    """Reformat a raw flight data line to 'Volo {airline}'; pass through otherwise."""
-    if _RAW_FLIGHT_RE.search(name or ""):
-        first = (name or "").split(",")[0].strip()
+    """Reformat flight titles to the elegant '{Airline} · {From} – {To}' shape.
+
+    Raw data lines reflow to 'Volo {airline} · {from} – {to}'; already-human
+    titles pass through with any `->`/`→` arrows normalized to `–`.
+    Price stays pill-only (handled by the caller)."""
+    text = name or ""
+    if _RAW_FLIGHT_RE.search(text):
+        first = text.split(",")[0].strip()
+        route = _ROUTE_RE.search(text)
+        if first and route:
+            return f"Volo {first} · {route.group(1)} – {route.group(2)}"
         return f"Volo {first}" if first else "Volo"
-    return name
+    return _ARROW_RE.sub(" – ", text)
 
 
 def _strip_duplicate_price(desc: str, price: str) -> str:
@@ -106,23 +119,52 @@ def _render_group(label: str, items: list[dict], is_flight: bool = False) -> str
     return head + "\n".join(_render_card(item, is_flight=is_flight) for item in items)
 
 
+def _is_van_trip(content: dict) -> bool:
+    """Same van predicate as the research layer (Part A rental query trigger)."""
+    tm = (content.get("travel_mode") or "").lower()
+    acc = (content.get("accommodation_style") or "").lower()
+    return tm == "van_life" or acc == "van"
+
+
+#: Max rental cards in the "Dove noleggiare" section (van trips only).
+RENTAL_CAP = 2
+RENTAL_HEADING = "Dove noleggiare il van"
+
+
+def _rental_items(content: dict) -> list[dict]:
+    """Rental-tagged places, curated via the `places` allow-list (no new map key)."""
+    allow = set(content.get("sections_map", {}).get("places", []))
+    return [r for r in content.get("resources", [])
+            if r.get("rental") and r.get("link") in allow][:RENTAL_CAP]
+
+
+def _render_rental_group(content: dict) -> str:
+    """'Dove noleggiare il van' cards (van trips with curated rentals only)."""
+    if not _is_van_trip(content):
+        return ""
+    return _render_group(RENTAL_HEADING, _rental_items(content))
+
+
 def _grouped_cards(content: dict, exclude_links: set[str] | None = None) -> str:
     """Group resources under Voli/Dove stare/Cosa fare headings.
 
     Links in `exclude_links` (the hero flight) never render here — neither as
-    grouped cards nor as leftover singles."""
+    grouped cards nor as leftover singles. On van trips, rental-tagged places
+    render only in the "Dove noleggiare" section, never duplicated here."""
     excluded = set(exclude_links or ())
     smap = content.get("sections_map", {})
     flight_links = set(smap.get("flights", []))
+    pool = [r for r in content.get("resources", [])
+            if not (_is_van_trip(content) and r.get("rental"))]
     used: set[str] = set(excluded)
     out = []
     for kind, label in _GROUP_HEADINGS.items():
         allow = set(smap.get(kind, [])) - excluded
-        items = [r for r in content.get("resources", []) if r.get("link") in allow and r["link"] not in used]
+        items = [r for r in pool if r.get("link") in allow and r["link"] not in used]
         for r in items:
             used.add(r["link"])
         out.append(_render_group(label, items, is_flight=(kind == "flights")))
-    leftovers = [r for r in content.get("resources", []) if r.get("link") not in used]
+    leftovers = [r for r in pool if r.get("link") not in used]
     if leftovers:
         out.append("\n".join(
             _render_card(r, is_flight=(r.get("link") in flight_links)) for r in leftovers
@@ -186,22 +228,21 @@ def _render_arrival_block(items: list[dict]) -> str:
     )
 
 
+#: Neutral one-liners per travel mode. They promise nothing ungrounded —
+#: specifics (where to stop, where to rent) come only from LLM-grounded
+#: resource text, never from this static copy.
 _TRAVEL_MODE_BLOCKS = {
     "road_trip": (
         "Come muoversi in loco",
-        "Il viaggio è pensato come road trip: ti suggeriamo tappe giornaliere con distanze gestibili, "
-        "soste per il pranzo e pernottamenti lungo il percorso. L'auto (o moto) ti dà libertà totale "
-        "di deviare verso i luoghi che scoprirai strada facendo."
+        "Tappe giornaliere in auto, strada facendo.",
     ),
     "van_life": (
         "Vita in van",
-        "Dormi nel veicolo: le soste notturne sono aree attrezzate, campeggi liberi o parcheggi sicuri "
-        "selezionati lungo il percorso. Ti segnaliamo dove rifornire acqua, scaricare e ricaricare."
+        "Itinerario su strada, pernottamenti a bordo.",
     ),
     "sailing": (
         "Navigazione",
-        "Il viaggio si svolge in barca: ti indichiamo porti di imbarco, marine per il noleggio, "
-        "rotte costiere con ancoraggi sicuri e tappe a terra per rifornimenti ed esplorazioni."
+        "Rotte costiere in barca, tappe a terra.",
     ),
 }
 
@@ -267,6 +308,7 @@ def build_html_email(content: dict) -> str:
         understanding=_e(content["understanding"]),
         arrival_section=_render_arrival_block(arrival_items),
         resource_groups=_grouped_cards(content, exclude_links=exclude_links),
+        rental_section=_render_rental_group(content),
         travel_box=_render_travel_mode_block(content.get("travel_mode"), content.get("mobility")),
         sources_section=_render_sources(content.get("appendix", {}), exclude_links=shown_links),
         cta=_e(content["cta"]),
