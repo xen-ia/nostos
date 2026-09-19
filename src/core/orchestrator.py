@@ -179,7 +179,7 @@ class TripOrchestrator:
                 resolved, departure_codes = await self._geo_plan(trip, intent)
                 tool_calls: list[dict] = []
                 destination = self._effective_destination(trip, intent, resolved)
-                anchors = await self._explore(destination, tool_calls)
+                anchors = await self._explore(destination, tool_calls, resolved=resolved)
                 targeted = await self._target(trip, intent, anchors)
                 research = await self._execute_searches(
                     trip, intent, targeted, windows, anchors, tool_calls,
@@ -188,6 +188,10 @@ class TripOrchestrator:
 
             async with self._timed("curate+compose"):
                 curated = await self._curate(trip, intent, research["corpus"])
+                if not curated["maps"] and not curated["places"]:
+                    raise NoResourcesError(
+                        "only a flight was found: not enough for a useful email, trip aborted without sending"
+                    )
                 research["curated"] = curated
                 email_content, body_text, body_html, package = await self._compose_email(trip, intent, research)
 
@@ -408,16 +412,46 @@ class TripOrchestrator:
                 windows.append(candidate)
         return windows[:3]
 
-    async def _explore(self, destination: str | None, tool_calls: list[dict]) -> list[dict]:
-        if not destination:
+    async def _explore(
+        self,
+        destination: str | None,
+        tool_calls: list[dict],
+        resolved: ResolvedDestinations | None = None,
+    ) -> list[dict]:
+        """One explore query per resolved destination (never the joined string:
+        joining two cities with "e" breaks the search). When the resolved list
+        is empty, fall back to the effective destination string. If total
+        anchors are still empty, one plain fallback query per destination."""
+        names = [p.name for p in (resolved.destinations if resolved else []) if p.name]
+        if not names and destination:
+            names = [destination]
+        if not names:
             return []
-        query = f"quartieri e luoghi chiave in {destination}"
-        try:
-            anchors = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
-        except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
-            logger.warning("google_maps explore: error %s: %s", type(exc).__name__, exc)
-            return []
-        self._log_call(tool_calls, "google_maps", {"q": query}, anchors)
+        anchors: list[dict] = []
+        for name in names:
+            query = f"quartieri e luoghi chiave in {name}"
+            try:
+                res = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
+            except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
+                logger.warning("google_maps explore: error %s: %s", type(exc).__name__, exc)
+                tool_calls.append({"engine": "google_maps", "params": {"q": query},
+                                   "error": type(exc).__name__})
+                continue
+            self._log_call(tool_calls, "google_maps", {"q": query}, res)
+            anchors.extend(res)
+        if not anchors:
+            for name in names:
+                fallback = f"cose da vedere a {name}"
+                try:
+                    res = await maps.research(fallback, timeout=self._serpapi_timeout,
+                                              api_key=self._serpapi_api_key)
+                except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
+                    logger.warning("google_maps explore fallback: error %s: %s", type(exc).__name__, exc)
+                    tool_calls.append({"engine": "google_maps", "params": {"q": fallback},
+                                       "error": type(exc).__name__})
+                    continue
+                self._log_call(tool_calls, "google_maps", {"q": fallback}, res)
+                anchors.extend(res)
         return anchors
 
     async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict]) -> list[str]:
@@ -447,7 +481,7 @@ class TripOrchestrator:
 
         # Derive from travel_mode/accommodation_style
         if tm == "van_life" or acc == "van":
-            return f"camper van camping area sosta in {destination}"
+            return f"campeggio {destination}"
         if tm == "sailing" or acc == "boat":
             return f"porto marina ormeggio barca a vela in {destination}"
         if tm == "road_trip" or acc == "camping":
@@ -480,6 +514,7 @@ class TripOrchestrator:
             except Exception as exc:  # noqa: BLE001 — mirrored from previous behavior
                 errors.append(exc)
                 logger.warning("%s: error %s: %s", engine, type(exc).__name__, exc)
+                tool_calls.append({"engine": engine, "params": params, "error": type(exc).__name__})
                 return []
             self._log_call(tool_calls, engine, params, res)
             return res
@@ -548,6 +583,16 @@ class TripOrchestrator:
                           timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
             "google_hotels", {"q": places_query, "check_in_date": check_in, "check_out_date": check_out},
         )
+        if not stays and destination and places_query == f"campeggio {destination}":
+            logger.info("google_hotels: empty/error for van query, retrying alternate campsite in %s", destination)
+            alt_query = f"campsite {destination}"
+            stays = await guarded(
+                places.search(destination=destination, query=alt_query,
+                              check_in_date=check_in, check_out_date=check_out,
+                              timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
+                "google_hotels", {"q": alt_query, "check_in_date": check_in,
+                                  "check_out_date": check_out},
+            )
         if not stays:
             logger.info("google_hotels: empty for mode query, retrying generic hotels in %s", destination)
             retry_query = f"hotels in {destination}" if destination else "hotels"
