@@ -613,10 +613,34 @@
     cursor: pointer;
   }
 
-  /* ---- voice composer (dettatura free_text) ---- */
+  /* ---- voice composer (dettatura free_text, inglobata nel box) ---- */
+
+  .composer-box {
+    position: relative;
+    border: 1.5px solid var(--border);
+    background: #FCF9EF;
+    border-radius: 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .composer-box:focus-within {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.25);
+  }
+  .composer-box textarea {
+    border: none;
+    background: transparent;
+    border-radius: 8px 8px 0 0;
+    padding-right: 3rem;
+  }
+  .composer-box textarea:focus {
+    border: none;
+    box-shadow: none;
+  }
 
   .mic-btn {
-    margin-left: 0.5rem;
+    position: absolute;
+    right: 0.6rem;
+    bottom: 0.6rem;
     width: 1.9rem;
     height: 1.9rem;
     border-radius: 50%;
@@ -629,7 +653,6 @@
     justify-content: center;
     padding: 0;
     flex-shrink: 0;
-    vertical-align: middle;
     transition: background 0.15s ease, transform 0.15s ease;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
@@ -651,18 +674,20 @@
     100% { box-shadow: 0 0 0 0 rgba(154,74,42,0); }
   }
 
-  .composer-wrap { position: relative; }
+  .mic-btn.is-hidden { visibility: hidden; }
   .voice-interim {
     font-size: 0.85rem;
     font-style: italic;
     color: var(--ink-muted);
-    margin-top: 0.35rem;
+    margin: 0.35rem 0 0;
+    padding: 0 0.75rem;
   }
   .voice-interim[hidden] { display: none; }
   .composer-foot {
     display: flex;
     justify-content: flex-end;
     margin-top: 0.25rem;
+    padding: 0 3rem 0.35rem 0.75rem;
     min-height: 1rem;
   }
   .free-count {
@@ -672,21 +697,50 @@
   }
   .free-count[hidden] { display: none; }
 
-  .voicebar {
+  /* riga d'azione inglobata nel box: ✕ / waveform+timer / ✓ (linguaggio Claude/GPT,
+     adattato al mondo parchment: terracotta-deep su trasparente) */
+  .voice-row {
+    min-width: 0;
+    border-top: 1px solid rgba(217,164,74,0.35);
+    padding: 0.5rem 0.65rem 0.6rem;
+  }
+  .voice-row[hidden] { display: none; }
+  #voice-hint {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    margin-bottom: 0.4rem;
+    overflow-wrap: break-word;
+  }
+  #voice-hint.is-cancel { color: #A83A28; font-weight: 600; }
+  .voice-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem 0.6rem;
     min-width: 0;
-    max-width: 100%;
-    margin-top: 0.5rem;
-    padding: 0.45rem 0.6rem;
-    border: 1.5px solid rgba(217,164,74,0.55);
-    border-radius: 10px;
-    background: rgba(217,164,74,0.08);
   }
-  .voicebar[hidden] { display: none; }
-  #voice-wave { flex-shrink: 0; max-width: 100%; height: auto; }
+  .voice-cancel {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .voice-cancel:hover { background: rgba(168,62,40,0.1); color: #A83A28; }
+  .voice-cancel:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+  }
+  #voice-wave { flex: 1 1 6rem; min-width: 0; max-width: 100%; height: 28px; }
   #voice-timer {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.8rem;
@@ -695,36 +749,26 @@
     min-width: 2.2rem;
     flex-shrink: 0;
   }
-  #voice-hint {
-    font-size: 0.8rem;
-    color: var(--ink-muted);
-    flex: 1 1 7rem;
-    min-width: 0;
-    overflow-wrap: break-word;
-  }
-  #voice-hint.is-cancel { color: #A83A28; font-weight: 600; }
   #voice-lock {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--terracotta-deep);
-    background: #FCF9EF;
-    border: 1.5px solid var(--terracotta-deep);
-    border-radius: 999px;
-    padding: 0.35rem 0.75rem;
-    min-height: 2.25rem;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #A84E28 0%, #8F4323 100%);
+    color: #FCF9EF;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    justify-content: center;
+    padding: 0;
     flex-shrink: 0;
-    max-width: 100%;
-    transition: background 0.15s ease;
+    box-shadow: 0 8px 16px -8px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease, filter 0.15s ease;
   }
-  #voice-lock:hover { background: rgba(217,164,74,0.18); }
+  #voice-lock:hover { transform: scale(1.06); filter: brightness(1.05); }
   #voice-lock:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(217,164,74,0.4);
+    box-shadow: 0 0 0 3px rgba(217,164,74,0.45);
   }
 
   .voice-error {
@@ -950,7 +994,7 @@
     .people-row input[type="number"], .people-row select { min-height: 2.75rem; }
     .people-row select { flex: 1; min-width: 0; }
     .people-row { flex-wrap: wrap; }
-    #voice-lock { min-height: 2.75rem; padding: 0.5rem 0.9rem; }
+    .voice-cancel, #voice-lock { width: 2.75rem; height: 2.75rem; }
     .stepper button { width: 3rem; min-height: 2.75rem; }
     .stepper input[type="number"] { min-height: 2.75rem; width: 3.2rem; font-size: 1.05rem; }
     button[type="submit"] { width: 100%; padding: 1rem 1.5rem; }
@@ -1085,17 +1129,21 @@
       </div>
 
       <div class="field full">
-        <label for="free_text">Raccontaci l'atmosfera che cerchi <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><rect x="7.4" y="2.2" width="5.2" height="8.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 9.3a4.7 4.7 0 0 0 9.4 0M10 14v2.4M7.9 16.9h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></label>
-        <div class="composer-wrap">
+        <label for="free_text">Raccontaci l'atmosfera che cerchi</label>
+        <div class="composer-box" id="composer-box">
           <textarea id="free_text" placeholder="Es. Vorrei staccare dalla routine, non i soliti posti da cartolina..." enterkeyhint="done" maxlength="5000"></textarea>
+          <button type="button" id="mic-btn" class="mic-btn" aria-label="Tieni premuto per dettare" aria-pressed="false" title="Tieni premuto per dettare"><svg class="mic-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><rect x="7.4" y="2.2" width="5.2" height="8.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 9.3a4.7 4.7 0 0 0 9.4 0M10 14v2.4M7.9 16.9h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
           <div id="voice-interim" class="voice-interim" aria-hidden="true" hidden></div>
+          <div class="voice-row" id="voice-row" hidden>
+            <span id="voice-hint">Rilascia per inviare · trascina per annullare</span>
+            <div class="voice-actions">
+              <button type="button" id="voice-cancel" class="voice-cancel" aria-label="Annulla la registrazione"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+              <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
+              <span id="voice-timer" role="timer">0:00</span>
+              <button type="button" id="voice-lock" aria-label="Finisci la registrazione"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
           <div class="composer-foot"><span id="free-count" class="free-count" hidden></span></div>
-        </div>
-        <div class="voicebar" id="voicebar" hidden>
-          <canvas id="voice-wave" width="120" height="28" aria-hidden="true"></canvas>
-          <span id="voice-timer" role="timer">0:00</span>
-          <span id="voice-hint">Tieni premuto · trascina per annullare</span>
-          <button type="button" id="voice-lock" aria-label="Finisci la registrazione"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg><span>Fine</span></button>
         </div>
         <div id="voice-error" class="voice-error" role="alert" hidden></div>
         <div id="voice-live-region" class="sr-only" aria-live="polite"></div>
@@ -1506,7 +1554,8 @@
 
   // ---- voice composer: tieni premuto per dettare (Web Speech live, fallback batch STT) ----
   const micBtn = document.getElementById("mic-btn");
-  const voicebar = document.getElementById("voicebar");
+  const voiceRow = document.getElementById("voice-row");
+  const voiceCancel = document.getElementById("voice-cancel");
   const voiceWave = document.getElementById("voice-wave");
   const voiceTimer = document.getElementById("voice-timer");
   const voiceHint = document.getElementById("voice-hint");
@@ -1516,13 +1565,12 @@
   const voiceInterim = document.getElementById("voice-interim");
   const freeCount = document.getElementById("free-count");
 
-  const HINT_DEFAULT = "Tieni premuto · trascina per annullare";
+  const HINT_DEFAULT = "Rilascia per inviare · trascina per annullare";
   const HINT_CANCEL = "Rilascia per annullare";
-  const HINT_LOCKED = "Registrazione bloccata · tocca il microfono per finire";
+  const HINT_LOCKED = "Registrazione bloccata · tocca ✓ per finire";
   const HINT_LISTENING = "Ascolto…";
   const HINT_TRANSCRIBING = "Trascrizione…";
   const CANCEL_PX = 60;
-  const LOCK_AFTER_MS = 1000;
   const FREE_MAX = 5000;
   const FREE_WARN = 4500;
 
@@ -1574,9 +1622,24 @@
     if (voice.timerId){ clearInterval(voice.timerId); voice.timerId = 0; }
   }
 
-  function drawWave(){
+  function sizeWaveCanvas(){
+    // Backing store = displayed size × devicePixelRatio: without this the 120px
+    // bitmap gets stretched by CSS and bars look blurry, esp. on retina screens.
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const w = Math.max(1, Math.round(voiceWave.clientWidth * dpr));
+    const h = Math.max(1, Math.round(voiceWave.clientHeight * dpr));
+    if (voiceWave.width !== w || voiceWave.height !== h){
+      voiceWave.width = w;
+      voiceWave.height = h;
+    }
     const ctx = voiceWave.getContext("2d");
-    const W = voiceWave.width, H = voiceWave.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  function drawWave(){
+    const ctx = sizeWaveCanvas();
+    const W = voiceWave.clientWidth, H = voiceWave.clientHeight;
     const bars = 24, gap = 2;
     const bw = (W - gap * (bars - 1)) / bars;
     ctx.clearRect(0, 0, W, H);
@@ -1587,6 +1650,7 @@
       levels = voice.freqBuf;
     }
     const t = Date.now();
+    const r = Math.min(bw / 2, 2);
     for (let i = 0; i < bars; i++){
       let frac;
       if (levels){
@@ -1596,7 +1660,15 @@
         frac = 0.15 + 0.75 * Math.abs(Math.sin(t / 320 + i * 0.7));
       }
       const h = Math.max(2, frac * H);
-      ctx.fillRect(i * (bw + gap), (H - h) / 2, bw, h);
+      const x = Math.round(i * (bw + gap));
+      const y = Math.round((H - h) / 2);
+      if (ctx.roundRect){
+        ctx.beginPath();
+        ctx.roundRect(x, y, Math.max(1, Math.round(bw)), Math.round(h), r);
+        ctx.fill();
+      } else {
+        ctx.fillRect(x, y, Math.max(1, Math.round(bw)), Math.round(h));
+      }
     }
     voice.waveRaf = requestAnimationFrame(drawWave);
   }
@@ -1609,7 +1681,7 @@
   function stopWave(){
     if (voice.waveRaf){ cancelAnimationFrame(voice.waveRaf); voice.waveRaf = 0; }
     const ctx = voiceWave.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, voiceWave.width, voiceWave.height);
+    if (ctx){ ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, voiceWave.width, voiceWave.height); }
   }
 
   // ---- auto-grow + contatore ----
@@ -1674,8 +1746,9 @@
     stopWave();
     cleanupAudio();
     clearTimeout(voice.stopFallback);
-    voicebar.hidden = true;
+    voiceRow.hidden = true;
     micBtn.classList.remove("is-recording");
+    micBtn.classList.remove("is-hidden");
     micBtn.setAttribute("aria-pressed", "false");
     voiceInterim.hidden = true;
     voiceInterim.textContent = "";
@@ -1851,8 +1924,9 @@
     voice.cancelArmed = false;
     voice.stopIntentional = false;
     voice.state = "holding";
-    voicebar.hidden = false;
+    voiceRow.hidden = false;
     micBtn.classList.add("is-recording");
+    micBtn.classList.add("is-hidden");
     micBtn.setAttribute("aria-pressed", "true");
     setHint(HINT_DEFAULT, false);
     // stato parziale onesto: finché il browser non consegna interim veri,
@@ -1918,7 +1992,7 @@
   // Press-and-hold (Pointer Events: mouse, touch, penna).
   micBtn.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button > 0) return;
-    if (voice.state !== "idle") return; // in locked lo stop è via tap (click)
+    if (voice.state !== "idle") return; // in locked la chiusura è via ✓ (tap)
     e.preventDefault();
     try { micBtn.setPointerCapture(e.pointerId); } catch {}
     voice.startX = e.clientX;
@@ -1944,7 +2018,7 @@
   });
 
   micBtn.addEventListener("pointerup", () => {
-    if (voice.state === "locked") return; // resta bloccato: tap per finire
+    if (voice.state === "locked") return; // resta bloccato: chiusura via ✓
     if (voice.state !== "holding") return;
     if (voice.cancelArmed) cancelRelease();
     else finishRelease();
@@ -1954,26 +2028,21 @@
     if (voice.state === "holding" || voice.state === "locked") cancelRelease();
   });
 
-  // In locked: tap sul microfono per fermare.
-  micBtn.addEventListener("click", () => {
-    if (voice.state === "locked") finishRelease();
-  });
+  // Tap su ✓ (holding o locked): conferma e chiude la registrazione.
+  voiceLock.addEventListener("click", finishRelease);
 
-  // Tap su Fine dopo 1s di hold → locked.
-  voiceLock.addEventListener("click", () => {
-    if (voice.state === "holding" && Date.now() - voice.startedAt > LOCK_AFTER_MS) enterLocked();
-  });
+  // Tap su ✕: scarta tutto ciò che è stato dettato.
+  voiceCancel.addEventListener("click", cancelRelease);
 
   // Tastiera: Spazio registra sul #mic-btn focalizzato, Esc annulla.
+  // Il microfono si nasconde durante la registrazione (riga inglobata nel box),
+  // quindi il rilascio di Spazio e la chiusura in locked passano dal documento.
   micBtn.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !e.repeat){
       if (voice.state === "idle"){
         e.preventDefault();
         voice.keyHolding = true;
         startSession();
-      } else if (voice.state === "locked"){
-        e.preventDefault();
-        finishRelease();
       }
     }
     if (e.key === "Escape" && (voice.state === "holding" || voice.state === "locked")){
@@ -1982,12 +2051,20 @@
     }
   });
 
-  micBtn.addEventListener("keyup", (e) => {
+  document.addEventListener("keyup", (e) => {
     if (e.code === "Space" && voice.keyHolding){
       e.preventDefault();
       voice.keyHolding = false;
       if (voice.state === "holding") finishRelease();
       // se nel frattempo è scattato il lock, resta bloccato
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && !e.repeat && voice.state === "locked"
+        && !/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test((e.target && e.target.tagName) || "")){
+      e.preventDefault();
+      finishRelease();
     }
   });
 
