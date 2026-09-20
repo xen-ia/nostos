@@ -605,3 +605,249 @@ async def test_needs_flights_false_skips_flights(monkeypatch):
     assert flight_called == [], "flights should be skipped when needs_flights=false"
     assert result["geo"]["skipped_flights_reason"] == "no_flights_needed"
     assert any(tc.get("skipped") and tc.get("reason") == "no_flights_needed" for tc in tool_calls)
+
+
+import asyncio
+from src.core.decision_router import build_router_state
+
+class _FakeJev:
+    async def decide(self, state, questions):
+        return {"model": "jev-1.13.0", "answers": {
+            "travel_mode": {"value": "van_life", "probability": 0.92},
+            "needs_flights": {"value": True, "probability": 0.88},
+            "pace": {"value": "rilassato", "probability": 0.9},
+            "avoids_crowds": {"value": True, "probability": 0.87},
+            "stay_fit": {"value": "van", "probability": 0.91},
+            "budget_sensitive": {"value": False, "probability": 0.7},
+        }}
+
+def test_route_trip_fake_jev():
+    from src.core.schemas import TripResponse, TripStatus
+    from src.core.decision_router import route_trip
+    trip = TripResponse(id="t1", status=TripStatus.PENDING, received_at="2026-09-20T00:00:00+00:00",
+        email="a@b.it", destination="Creta", departure_location="Italy", free_text="van mare relax")
+    out = asyncio.run(route_trip(trip, _FakeJev()))
+    assert out["decisions"]["travel_mode"] == "van_life"
+    assert out["model"] == "jev-1.13.0"
+
+
+# --- Task 4 fix round: Jev router flag/fallback coverage ---
+
+class _FakeJevActive:
+    """Auto bands on travel_mode/needs_flights; tracks close() calls."""
+
+    def __init__(self):
+        self.closed = 0
+
+    async def decide(self, state, questions):
+        return {"model": "jev-1.13.0", "answers": {
+            "travel_mode": {"value": "van_life", "probability": 0.92},
+            "needs_flights": {"value": False, "probability": 0.88},
+            "pace": {"value": "rilassato", "probability": 0.9},
+            "avoids_crowds": {"value": True, "probability": 0.87},
+            "stay_fit": {"value": "van", "probability": 0.91},
+            "budget_sensitive": {"value": False, "probability": 0.7},
+        }}
+
+    async def close(self):
+        self.closed += 1
+
+
+def _double_fallback_answers():
+    return {"model": "jev-1.13.0", "answers": {
+        "travel_mode": {"value": "van_life", "probability": 0.1},
+        "needs_flights": {"value": True, "probability": 0.2},
+        "pace": {"value": "rilassato", "probability": 0.9},
+        "avoids_crowds": {"value": True, "probability": 0.87},
+        "stay_fit": {"value": "van", "probability": 0.91},
+        "budget_sensitive": {"value": False, "probability": 0.7},
+    }}
+
+
+class _FakeJevDoubleFallback:
+    async def decide(self, state, questions):
+        return _double_fallback_answers()
+
+
+class _FakeJevError:
+    async def decide(self, state, questions):
+        from src.services.apis.decisions import JevError
+        raise JevError("jev decide failed: TimeoutError: timed out")
+
+
+class _FakeJevBoom:
+    """Non-JevError failure (e.g. malformed payload float() blowup)."""
+
+    async def decide(self, state, questions):
+        raise RuntimeError("boom")
+
+
+async def _run_trip_with_jev(monkeypatch, jev_client):
+    """Run a full trip with stubbed searches; build_decision_client patched to jev_client."""
+    import src.core.orchestrator as orch
+
+    store = make_store()
+    trip = await store.create(make_trip())
+    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    email = FakeEmailSender()
+    db = FakeDatabase()
+
+    async def fake_flights(*args, **kwargs):
+        return [{"airline": "ANA", "from": "MXP", "to": "HND", "departure_date": "2026-09-01",
+                 "price_eur": 320, "link": "https://example.com/flight"}]
+
+    async def fake_maps(query, **kwargs):
+        return [{"name": "Senso-ji", "type": "Temple", "rating": 4.7, "link": "https://example.com/poi"}]
+
+    async def fake_places(**kwargs):
+        return [{"name": "Ryokan X", "price_per_night_eur": 95, "link": "https://example.com/hotel"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", fake_flights)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", fake_maps)
+    monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
+    monkeypatch.setattr(orch, "build_decision_client", lambda settings: jev_client)
+
+    orchestrator = TripOrchestrator(store=store, llm_client=llm, email_sender=email,
+                                    database=db, trip_id=trip.id)
+    await _run(orchestrator)
+    got = await store.get(trip.id)
+    package = db.saved[0]["package"] if db.saved else None
+    return got, email, db, package
+
+
+def _jev_tool_calls(package):
+    return [tc for tc in package["tool_calls"] if tc.get("engine") == "jev-router"]
+
+
+def test_build_decision_client_none_when_flag_off():
+    import asyncio as _asyncio
+    from types import SimpleNamespace
+    from src.services.apis.decisions import build_decision_client
+
+    off = SimpleNamespace(decision_provider="llm-fallback", typesafe_api_key="secret",
+                          decision_model="jev-1.13.0", decision_timeout=5.0)
+    assert build_decision_client(off) is None
+
+    no_key = SimpleNamespace(decision_provider="jev", typesafe_api_key="",
+                             decision_model="jev-1.13.0", decision_timeout=5.0)
+    assert build_decision_client(no_key) is None
+
+    on = SimpleNamespace(decision_provider="jev", typesafe_api_key="secret",
+                         decision_model="jev-1.13.0", decision_timeout=5.0)
+    client = build_decision_client(on)
+    assert client is not None
+    _asyncio.run(client.close())
+
+
+async def test_jev_error_falls_back_to_llm_path(monkeypatch):
+    got, email, db, package = await _run_trip_with_jev(monkeypatch, _FakeJevError())
+    assert got.status == TripStatus.DONE
+    assert len(email.sent) == 1
+    assert _jev_tool_calls(package) == []
+
+
+async def test_jev_generic_error_falls_back_to_llm_path(monkeypatch):
+    got, email, db, package = await _run_trip_with_jev(monkeypatch, _FakeJevBoom())
+    assert got.status == TripStatus.DONE
+    assert len(email.sent) == 1
+    assert _jev_tool_calls(package) == []
+
+
+async def test_double_fallback_bands_use_existing_path(monkeypatch):
+    got, email, db, package = await _run_trip_with_jev(monkeypatch, _FakeJevDoubleFallback())
+    assert got.status == TripStatus.DONE
+    assert len(email.sent) == 1
+    assert _jev_tool_calls(package) == []
+    assert package["geo"]["skipped_flights_reason"] is None  # LLM intent path probed flights
+
+
+async def test_flag_off_path_byte_identical(monkeypatch):
+    """Default settings (provider llm-fallback) -> build_decision_client returns None,
+    existing path runs unchanged: no jev-router entry, legacy tool_call shapes only."""
+    import src.core.orchestrator as orch
+    from src.settings import get_settings
+
+    assert orch.build_decision_client(get_settings()) is None
+
+    store = make_store()
+    trip = await store.create(make_trip())
+    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    email = FakeEmailSender()
+    db = FakeDatabase()
+
+    async def fake_flights(*args, **kwargs):
+        return [{"airline": "ANA", "from": "MXP", "to": "HND", "departure_date": "2026-09-01",
+                 "price_eur": 320, "link": "https://example.com/flight"}]
+
+    async def fake_maps(query, **kwargs):
+        return [{"name": "Senso-ji", "type": "Temple", "rating": 4.7, "link": "https://example.com/poi"}]
+
+    async def fake_places(**kwargs):
+        return [{"name": "Ryokan X", "price_per_night_eur": 95, "link": "https://example.com/hotel"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", fake_flights)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", fake_maps)
+    monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
+
+    orchestrator = TripOrchestrator(store=store, llm_client=llm, email_sender=email,
+                                    database=db, trip_id=trip.id)
+    await _run(orchestrator)
+
+    got = await store.get(trip.id)
+    assert got.status == TripStatus.DONE
+    assert len(email.sent) == 1
+    package = db.saved[0]["package"]
+    assert _jev_tool_calls(package) == []
+    assert all(set(tc) == {"engine", "params", "result_count"} or set(tc) == {"engine", "skipped", "reason"}
+               for tc in package["tool_calls"])
+
+
+async def test_jev_active_logs_router_tool_call(monkeypatch):
+    jev = _FakeJevActive()
+    got, email, db, package = await _run_trip_with_jev(monkeypatch, jev)
+    assert got.status == TripStatus.DONE
+    assert len(email.sent) == 1
+    entries = _jev_tool_calls(package)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["model"] == "jev-1.13.0"
+    assert entry["decisions"]["travel_mode"] == "van_life"
+    assert set(entry) == {"engine", "model", "decisions", "bands"}
+    assert package["geo"]["skipped_flights_reason"] == "no_flights_needed"  # Jev needs_flights=False
+    assert jev.closed == 1, "per-call Jev client must be closed after decide"
+
+
+def test_route_trip_bad_probability_defaults_fallback():
+    from src.core.schemas import TripResponse, TripStatus
+    from src.core.decision_router import route_trip
+
+    class _BadProb:
+        async def decide(self, state, questions):
+            return {"model": "jev-1.13.0", "answers": {
+                "travel_mode": {"value": "van_life", "probability": "nonsense"},
+                "needs_flights": {"value": True, "probability": None},
+            }}
+
+    trip = TripResponse(id="t1", status=TripStatus.PENDING, received_at="2026-09-20T00:00:00+00:00",
+        email="a@b.it", destination="Creta", departure_location="Italy", free_text="van mare relax")
+    out = asyncio.run(route_trip(trip, _BadProb()))
+    assert out["bands"]["travel_mode"] == "fallback"
+    assert out["bands"]["needs_flights"] == "fallback"
+    assert out["decisions"]["travel_mode"] == "van_life"
+
+
+async def test_decide_http_error_raises_jev_error():
+    import httpx
+    from src.services.apis.decisions import JevClient, JevError
+
+    def handler(request):
+        return httpx.Response(500, json={"error": "boom"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = JevClient(api_key="k", client=http)
+        try:
+            with pytest.raises(JevError):
+                await client.decide({}, {})
+        finally:
+            await client.close()
