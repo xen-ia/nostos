@@ -37,6 +37,10 @@ from src.core.prompts import (
     build_target_prompt,
 )
 from src.core.validation import build_allowed_resources, sanitize_windows, validate_resources
+from src.core.decision_router import route_trip
+from src.core.decision_scoring import pick_best_flight, pick_top_pois
+from src.services.apis.decisions import build_decision_client
+from src.settings import get_settings
 
 logger = logging.getLogger("nostos.orchestrator")
 
@@ -171,8 +175,52 @@ class TripOrchestrator:
             trip = await self._store.get(self._trip_id)
             await self._store.update_status(self._trip_id, TripStatus.RUNNING)
 
+            decision_client = build_decision_client(get_settings())
+            jev_route = None
+            tool_calls_jev = None
+            if decision_client is not None:
+                try:
+                    jev_route = await route_trip(trip, decision_client)
+                    tool_calls_jev = {"engine": "jev-router", "model": jev_route.get("model", ""), "decisions": jev_route["decisions"], "bands": jev_route["bands"]}
+                except Exception:
+                    logger.warning("jev route failed, falling back to LLM path", exc_info=True)
+                    jev_route = None
+                    tool_calls_jev = None
+                finally:
+                    close = getattr(decision_client, "close", None) or getattr(decision_client, "aclose", None)
+                    if callable(close):
+                        try:
+                            await close()
+                        except Exception:
+                            logger.debug("jev client close failed", exc_info=True)
+
             intent = await self._extract_intent(trip)
             logger.info("intent extracted for trip %s", self._trip_id)
+
+            jev_decisions = (jev_route or {}).get("decisions", {}) or {}
+            jev_bands = (jev_route or {}).get("bands", {}) or {}
+            jev_active = (
+                jev_route is not None
+                and tool_calls_jev is not None
+                and not (jev_bands.get("travel_mode") == "fallback"
+                         and jev_bands.get("needs_flights") == "fallback")
+            )
+            if jev_active:
+                logger.info("jev route active for trip %s: %s", self._trip_id, jev_decisions)
+
+            # Jev overrides apply to research queries only: email composition keeps
+            # the LLM intent (allow-list validation + template unchanged).
+            search_intent = intent
+            if jev_active:
+                overrides: dict = {}
+                jev_travel_mode = jev_decisions.get("travel_mode")
+                if isinstance(jev_travel_mode, str) and jev_travel_mode:
+                    overrides["travel_mode"] = jev_travel_mode
+                jev_needs_flights = jev_decisions.get("needs_flights")
+                if isinstance(jev_needs_flights, bool):
+                    overrides["needs_flights"] = jev_needs_flights
+                if overrides:
+                    search_intent = intent.model_copy(update=overrides)
 
             async with self._timed("research"):
                 windows = await self._plan_period(trip, intent)
@@ -182,9 +230,12 @@ class TripOrchestrator:
                 anchors = await self._explore(destination, tool_calls, resolved=resolved)
                 targeted = await self._target(trip, intent, anchors)
                 research = await self._execute_searches(
-                    trip, intent, targeted, windows, anchors, tool_calls,
+                    trip, search_intent, targeted, windows, anchors, tool_calls,
                     resolved=resolved, departure_codes=departure_codes,
                 )
+                if jev_active and tool_calls_jev is not None:
+                    self._apply_jev_scores(research, jev_decisions)
+                    research["tool_calls"].append(tool_calls_jev)
 
             async with self._timed("curate+compose"):
                 curated = await self._curate(trip, intent, research["corpus"])
@@ -673,6 +724,25 @@ class TripOrchestrator:
             "winning_window": winning_window,
             "geo": geo_block,
         }
+
+    @staticmethod
+    def _apply_jev_scores(research: dict, decisions: dict) -> None:
+        """Re-rank corpus flights/POIs with T3 scoring before _curate. The scores
+        map is empty (no per-item Jev scores yet): defaults keep order stable while
+        budget_sensitive already drives price weighting. Never invents links."""
+        budget_sensitive = decisions.get("budget_sensitive")
+        if not isinstance(budget_sensitive, bool):
+            budget_sensitive = False
+        scores: dict[str, float] = {}
+        corpus = research.get("corpus", {})
+        flights_list = corpus.get("flights", []) or []
+        if flights_list:
+            best = pick_best_flight(flights_list, scores, budget_sensitive)
+            if best is not None:
+                corpus["flights"] = [best]
+        maps_items = corpus.get("maps", []) or []
+        if maps_items:
+            corpus["maps"] = pick_top_pois(maps_items, scores, limit=len(maps_items))
 
     @staticmethod
     def _build_flight_combos(

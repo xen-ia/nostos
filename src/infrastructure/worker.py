@@ -71,6 +71,7 @@ def _assert_model_configured() -> None:
         env = MODEL_ENV_VARS[provider]
         raise SystemExit(f"LLM provider '{provider}' has no model: set {env} in .env")
     logger.info("LLM provider: %s, model: %s", provider, model)
+    logger.info("decision provider: %s, model: %s", settings.decision_provider, settings.decision_model)
 
 
 async def startup(ctx: dict) -> None:
