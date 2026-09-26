@@ -28,6 +28,7 @@ class FakeLLM(LLMClient):
         self._responses = responses or {}
         self._email_responses = list(email_responses) if email_responses else []
         self.calls: list[tuple[str, type]] = []
+        self.calls_kwargs: list[dict] = []
 
     async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         from src.core.models import (
@@ -41,6 +42,7 @@ class FakeLLM(LLMClient):
         )
 
         self.calls.append((prompt, model))
+        self.calls_kwargs.append({"model": model, "max_tokens": max_tokens})
         if self._error is not None:
             raise self._error
         if model in self._responses:

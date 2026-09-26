@@ -498,6 +498,24 @@ async def test_gate_retry_second_attempt_succeeds_with_rejection_feedback(monkey
     assert got.status == TripStatus.DONE
 
 
+async def test_compose_email_uses_large_token_budget(monkeypatch):
+    """EmailContent grew (why field): compose must request headroom, or long
+    emails truncate like the planner did (prod ValidationError, trip ERROR)."""
+    from src.core.models import EmailContent
+
+    store = make_store()
+    trip = await store.create(make_trip())
+    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    email = FakeEmailSender()
+    db = FakeDatabase()
+
+    await _run_with_searches(monkeypatch, llm, email, db, trip, store)
+
+    budgets = [kw["max_tokens"] for kw in llm.calls_kwargs if kw["model"] is EmailContent]
+    assert budgets, "compose must call extract for EmailContent"
+    assert all(b >= 2048 for b in budgets)
+
+
 async def test_gate_both_attempts_hallucinated_fails_without_email(monkeypatch):
     store = make_store()
     trip = await store.create(make_trip())

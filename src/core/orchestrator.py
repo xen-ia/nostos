@@ -964,7 +964,7 @@ class TripOrchestrator:
                                     self._render_places(curated["places"], numbered=True),
                                     trip,
                                     resolve_rationale=resolve_rationale)
-        content = (await self._llm.extract(prompt, EmailContent)).model_dump()
+        content = (await self._llm.extract(prompt, EmailContent, max_tokens=4096)).model_dump()
 
         report = validate_resources(content["resources"], allowed)
         if report.invalid or not content["resources"]:
@@ -972,7 +972,7 @@ class TripOrchestrator:
             content["resources"] = report.valid
             if not content["resources"]:
                 retry_prompt = prompt + "\n\nIMPORTANT: your previous answer cited resources not in the list and was rejected. Use ONLY the listed resources."
-                content = (await self._llm.extract(retry_prompt, EmailContent)).model_dump()
+                content = (await self._llm.extract(retry_prompt, EmailContent, max_tokens=4096)).model_dump()
                 report = validate_resources(content["resources"], allowed)
                 content["resources"] = report.valid
                 if not content["resources"]:
