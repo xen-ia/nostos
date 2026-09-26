@@ -82,12 +82,17 @@ def test_no_arrows_in_rendered_flight_names():
              "description": "", "price": "", "link": "https://flights.example/other"},
         ],
         "sections_map": {"flights": [hero, "https://flights.example/other"]},
+        "itinerary_days": [{"day_label": "Le tappe", "links": ["https://flights.example/other"],
+                            "transition": ""}],
     }
     html = build_html_email(content)
-    names = re.findall(r'd-name"[^>]*>\s*<a[^>]*>(.*?)</a>', html, re.S)
-    assert len(names) == 2  # hero title + grouped card title
-    for name in names:
-        assert "->" not in name and "→" not in name
+    assert "easyJet · MXP – INV" in html  # hero logistics, humanized, no doubled Volo
+    assert "Ryanair Bergamo – Edimburgo" in html  # second flight logistics
+    body = html.split("</head>", 1)[-1]
+    assert "MXP ->" not in body and "Bergamo →" not in body
+    assert "departure 2026-12-21" not in body
+    assert html.count(f'href="{hero}"') == 1
+    assert html.count('href="https://flights.example/other"') == 1
 
 
 def test_email_prompt_flight_name_rule_is_elegant():
@@ -152,8 +157,11 @@ def _hotel(link="https://hotel.example/x"):
 
 def _van_content(resources, travel_mode="van_life", accommodation_style="van"):
     links = [r["link"] for r in resources]
+    is_van = travel_mode == "van_life" or accommodation_style == "van"
+    day_links = [r["link"] for r in resources if not (is_van and r.get("rental"))]
     return {**BASE, "resources": resources,
             "sections_map": {"places": links},
+            "itinerary_days": [{"day_label": "Le tappe", "links": day_links, "transition": ""}],
             "travel_mode": travel_mode, "accommodation_style": accommodation_style}
 
 
@@ -161,16 +169,16 @@ def test_rental_section_renders_for_van_only():
     html = build_html_email(_van_content([_hotel(), _rental("https://rent.example/a")]))
     before, after = html.split("Dove noleggiare il van")
     assert "Van Rent X" not in before and "Van Rent X" in after
-    assert "Hotel X" in before  # stays keep their own group
+    assert "Hotel X" in before  # stays live in the itinerary phases
     assert "https://rent.example/a" in after
 
 
 def test_rental_section_absent_for_non_van_and_without_rentals():
     rental = _rental("https://rent.example/a")
-    # non-van trip: rental stays a normal "Dove stare" card, no rental section
+    # non-van trip: rental renders as a normal itinerary card, no rental section
     html = build_html_email(_van_content([rental], travel_mode="fixed", accommodation_style="hotel"))
     assert "Dove noleggiare" not in html
-    assert "Van Rent X" in html and "Dove stare" in html
+    assert "Van Rent X" in html and "L'itinerario" in html
     # van trip without rentals: no section
     html = build_html_email(_van_content([_hotel()]))
     assert "Dove noleggiare" not in html
@@ -191,8 +199,8 @@ def test_rental_section_caps_at_two_cards():
 
 def test_rentals_never_duplicated_between_sections():
     html = build_html_email(_van_content([_hotel(), _rental("https://rent.example/a")]))
-    # title link + "Apri" link per card: exactly one card for the rental
-    assert html.count("https://rent.example/a") == 2
+    # single Apri link per card: exactly one rental card rendered once
+    assert html.count("https://rent.example/a") == 1
 
 
 def test_validate_resources_covers_rental_tagged_places():
@@ -208,8 +216,8 @@ def test_body_text_mirrors_rental_section():
     assert "Dove noleggiare il van:" in text
     after = text.split("Dove noleggiare il van:", 1)[-1]
     assert "https://rent.example/a" in after
-    punti = text.split("Punti di partenza:", 1)[-1].split("Dove noleggiare", 1)[0]
-    assert "Van Rent X" not in punti and "Hotel X" in punti
+    tappe = text.split("L'itinerario:", 1)[-1].split("Dove noleggiare", 1)[0]
+    assert "Van Rent X" not in tappe and "Hotel X" in tappe
 
 
 # --- B5: appendix only-backed ---

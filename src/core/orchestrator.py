@@ -58,7 +58,10 @@ FLEXIBLE_WINDOW_SHIFT_DAYS = 7
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Com'è andata? Lasciaci un feedback."
+DRAFT_NOTE = ("Questa è una prima bozza composta da Xen-IA sui dati di oggi: "
+              "il viaggio vero lo definiamo insieme al passo successivo.")
+
+CTA = "Il prossimo passo è umano: dimmi cosa cambiare e ne parliamo insieme."
 
 JUNK_DOMAINS = frozenset({
     "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
@@ -309,20 +312,29 @@ class TripOrchestrator:
     @staticmethod
     def _compose_body_text(email_content: dict) -> str:
         lines = [email_content["opening"], "", email_content["understanding"], ""]
+        if (email_content.get("draft_note") or "").strip():
+            lines.append(email_content["draft_note"].strip())
+            lines.append("")
         smap = email_content.get("sections_map", {})
         flight_links = set(smap.get("flights", []))
+        maps_links = set(smap.get("maps", []))
         resources = email_content.get("resources", [])
-        flight_items = [r for r in resources if r.get("link") in flight_links]
-        hero_link = next((r["link"] for r in flight_items if r.get("link")), None)
-        if flight_items:
-            lines.append("Come arrivare:")
-            first = flight_items[0]
-            flight_line = first["name"]
-            if first.get("price"):
-                flight_line += f" — {first['price']}"
-            lines.append(flight_line)
-            lines.append(first["link"])
+        by_link = {r.get("link"): r for r in resources if r.get("link")}
+        itinerary_days = email_content.get("itinerary_days", [])
+        hero_link = next(
+            (link for day in itinerary_days or [] for link in day.get("links") or []
+             if link in maps_links and link in by_link),
+            None,
+        )
+        if hero_link:
+            hero = by_link[hero_link]
+            lines.append(hero.get("name", ""))
+            why = hero.get("why") or hero.get("description") or ""
+            if why:
+                lines.append(why)
+            lines.append(hero_link)
             lines.append("")
+        flight_items = [r for r in resources if r.get("link") in flight_links]
         # Travel mode labels/descriptions mirror the HTML travel box one-liners.
         travel_mode = email_content.get("travel_mode")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
@@ -332,16 +344,6 @@ class TripOrchestrator:
         rentals = [r for r in base_listed
                    if r.get("rental") and r.get("link") in place_links][:2] if is_van else []
         rental_links = {r.get("link") for r in rentals}
-        lines.append("Punti di partenza:")
-        listed = [r for r in base_listed if r.get("link") not in rental_links]
-        for i, item in enumerate(listed, 1):
-            entry = f"{i}. {item['name']}"
-            if item.get("price"):
-                entry += f" — {item['price']}"
-            lines.append(entry)
-            if item.get("description"):
-                lines.append(f"   {item['description']}")
-            lines.append(f"   {item['link']}")
 
         # Travel box one-liner mirroring the HTML hierarchy (no Mezzi line:
         # mobility info lives in the LLM prose, a bare vehicle list makes no sense).
@@ -374,14 +376,26 @@ class TripOrchestrator:
         itinerary_days = email_content.get("itinerary_days", [])
         if itinerary_days:
             lines.append("L'itinerario:")
-            names_by_link = {r.get("link"): r.get("name") for r in email_content.get("resources", [])}
             for day in itinerary_days:
                 lines.append(day.get("day_label", ""))
                 for link in day.get("links") or []:
-                    if link in names_by_link:
-                        lines.append(f"- {names_by_link[link]}")
+                    if link == hero_link or link not in by_link:
+                        continue
+                    item = by_link[link]
+                    lines.append(f"- {item.get('name')}")
+                    why = item.get("why") or item.get("description") or ""
+                    if why:
+                        lines.append(f"  {why}")
                 if day.get("transition"):
                     lines.append(f"  {day['transition']}")
+            lines.append("")
+        if flight_items:
+            for first in flight_items:
+                flight_line = f"Volo: {first['name']}"
+                if first.get("price"):
+                    flight_line += f" — {first['price']}"
+                lines.append(flight_line)
+                lines.append(first["link"])
             lines.append("")
 
         appendix = email_content.get("appendix", {})
@@ -901,7 +915,15 @@ class TripOrchestrator:
                 TripPlan,
                 max_tokens=2048,
             )
-            return sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
+            plan = sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
+            from src.core.trip_plan import transition_names_a_stop
+
+            stop_names = [r.get("name") for r in
+                          (curated["flights"] + curated["maps"] + curated["places"])]
+            for day in plan.days:
+                if day.transition and not transition_names_a_stop(day.transition, stop_names):
+                    logger.warning("trip plan transition names no stop (%s)", day.day_label)
+            return plan
         except Exception as exc:
             logger.warning("trip plan LLM failed, deterministic fallback: %s: %s", type(exc).__name__, exc)
             return self._fallback_plan(curated)
@@ -958,9 +980,23 @@ class TripOrchestrator:
         content = self._ensure_flight_hero(content, curated)
         content = self._apply_curated_flight_prices(content, curated)
         content = self._clean_resource_prices(content)
+        if any(self._is_generic(r.get("description")) or self._is_generic(r.get("why"))
+               for r in content["resources"]):
+            logger.info("generic prose detected, one specificity retry")
+            retry_prompt = (prompt + "\n\nIMPORTANT: some descriptions were generic filler. "
+                            "Rewrite every description and why with concrete specifics about "
+                            "THAT place (name, kind, area, brief fit). Never filler.")
+            retry_content = (await self._llm.extract(retry_prompt, EmailContent)).model_dump()
+            retry_report = validate_resources(retry_content["resources"], allowed)
+            if retry_report.valid:
+                retry_content["resources"] = retry_report.valid
+                content = self._ensure_flight_hero(retry_content, curated)
+                content = self._apply_curated_flight_prices(content, curated)
+                content = self._clean_resource_prices(content)
 
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
+        content["draft_note"] = DRAFT_NOTE
         content = strip_bracket_ids(content)
         from src.core.feedback_token import make_token
         from src.settings import get_settings
@@ -974,6 +1010,16 @@ class TripOrchestrator:
             "places": [r["link"] for r in curated["places"] if r.get("link")],
             "maps": [r["link"] for r in curated["maps"] if r.get("link")],
         }
+        from src.services.apis.email import format_trip_summary
+
+        content["trip_summary"] = format_trip_summary(
+            trip.destination, trip.start_date, trip.end_date,
+            trip.travelers_count, trip.travelers_type,
+        )
+        content["selection_heading"] = (
+            f"Ecco la selezione per {(trip.destination or '').strip()}"
+            if (trip.destination or "").strip() else "Ecco i punti di partenza"
+        )
         content["appendix"] = self._build_appendix(
             research,
             exclude_links={r["link"] for r in content["resources"] if r.get("link")},
@@ -986,11 +1032,15 @@ class TripOrchestrator:
         flight_links = [r["link"] for r in curated["flights"] if r.get("link")]
         maps_links = [r["link"] for r in curated["maps"] if r.get("link")]
         places_links = [r["link"] for r in curated["places"] if r.get("link")]
+        # Rentals keep their own section on van trips: never duplicate them in phases.
+        van_trip = (intent.travel_mode or "").lower() == "van_life" or (intent.accommodation_style or "").lower() == "van"
+        rental_links = {r["link"] for r in curated["places"] if r.get("rental") and r.get("link")} if van_trip else set()
         itinerary_days = []
         for day in trip_plan.days:
             links = ([flight_links[i] for i in day.flight_refs if i < len(flight_links)]
                      + [maps_links[i] for i in day.poi_refs if i < len(maps_links)]
                      + [places_links[i] for i in day.stay_refs if i < len(places_links)])
+            links = [link for link in links if link not in rental_links]
             itinerary_days.append({"day_label": day.day_label, "links": links, "transition": day.transition})
         content["itinerary_days"] = itinerary_days
         body_text = self._compose_body_text(content)
@@ -1104,6 +1154,21 @@ class TripOrchestrator:
 
         return "\n".join(place_line(i, it) for i, it in enumerate(items))
 
+    #: Filler the anti-generic gate refuses: vague stock phrases that say
+    #: nothing about the specific place.
+    _GENERIC_PHRASES = ("possibile sosta", "da inserire", "pratico per", "pratica per",
+                        "una base per", "coerente con")
+
+    @staticmethod
+    def _is_generic(text: str | None) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return False
+        if len(t) < 40:
+            return True
+        lowered = t.lower()
+        return any(p in lowered for p in TripOrchestrator._GENERIC_PHRASES)
+
     @staticmethod
     def _clean_resource_prices(content: dict) -> dict:
         """Blank prices that are missing or leaked 'None ...' strings (SerpAPI
@@ -1124,10 +1189,9 @@ class TripOrchestrator:
             if not f.get("link") or f["link"] in flight_links:
                 continue
             name = f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}".strip()
-            desc = f"Partenza {f['departure_date']}" if f.get("departure_date") else ""
             price = f"{f['price_eur']} EUR" if isinstance(f.get("price_eur"), (int, float)) else ""
             content.setdefault("resources", []).append(
-                {"name": name or "Volo", "description": desc, "price": price, "link": f["link"]})
+                {"name": name or "Volo", "description": "", "price": price, "link": f["link"]})
             logger.info("flight hero force-included from curated winner: %s", f["link"])
             break
         return content

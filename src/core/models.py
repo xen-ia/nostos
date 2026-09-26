@@ -83,7 +83,11 @@ class EmailResource(BaseModel):
     )
     description: str = Field(
         default="",
-        description="Breve dettaglio descrittivo in italiano",
+        description="Una frase concreta e specifica su QUESTO posto in italiano",
+    )
+    why: str = Field(
+        default="",
+        description="Perché fa per QUESTO viaggiatore: 1-2 frasi legate a nome, tipo, zona e brief",
     )
     price: str = Field(
         default="",

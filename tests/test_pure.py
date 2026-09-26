@@ -102,15 +102,17 @@ def test_compose_body_text_formatting():
             {"name": "Volo", "price": "320 EUR", "description": "Nonstop", "link": "https://x.com"},
             {"name": "Hotel", "link": "https://y.com"},
         ],
+        "sections_map": {"flights": ["https://x.com"]},
+        "itinerary_days": [{"day_label": "Le tappe", "links": ["https://y.com"],
+                            "transition": "Piano."}],
         "cta": "Facci sapere",
         "honest_note": "Auto",
     }
     text = TripOrchestrator._compose_body_text(content)
     assert text.startswith("Ciao")
-    assert "1. Volo" in text
-    assert "2. Hotel" in text
-    assert "https://x.com" in text
-    assert "320 EUR" in text
+    assert "Volo: Volo — 320 EUR" in text and "https://x.com" in text
+    assert "L'itinerario:" in text and "Hotel" in text and "Piano." in text
+    assert "Punti di partenza:" not in text and "Come arrivare:" not in text
 
 
 def test_build_intent_prompt_includes_structured_inputs():

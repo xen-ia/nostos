@@ -16,7 +16,7 @@ EMAIL = EmailContent(
     subject="Il tuo viaggio a Tokyo",
     opening="Tokyo in settembre ha un che di magico.",
     understanding="Capisco che cerchi cibo locale lontano dalle folle.",
-    resources=[{"name": "Senso-ji", "description": "Tempio storico", "price": "", "link": "https://example.com/poi"}],
+    resources=[{"name": "Senso-ji", "description": "Tempio buddista ad Asakusa tra incenso e lanterne rosse.", "price": "", "link": "https://example.com/poi"}],
 )
 
 

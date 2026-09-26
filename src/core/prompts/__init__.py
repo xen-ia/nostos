@@ -219,6 +219,12 @@ def build_email_prompt(
     {places_block}
 
     COMPOSITION RULES:
+    - Resource `description` is one concrete, specific sentence about THIS place; never write
+      'prezzo non indicato' or any price mention when no price is listed — end the sentence
+      on the place itself.
+    - Resource `why` is 1-2 sentences on why THIS place fits THIS traveler (name, kind, area,
+      brief interests); banned filler: 'possibile sosta', 'da inserire', 'pratico',
+      'una base per', 'coerente con'. Be specific or leave it empty — never filler.
     - If travel_mode is 'road_trip' or 'van_life': include a "Come muoversi" section explaining the route logic, daily drives, overnight stops; do NOT list bare flight links if they don't fit the mode.
     - If travel_mode is 'sailing': include a "Navigazione" section with ports, charter info, coastal hops.
     - If accommodation_style is 'van' or 'camping': show overnight stops/campsites, not hotel cards.
@@ -244,8 +250,11 @@ def build_plan_prompt(trip, intent, flights_block: str, maps_block: str, places_
     {places_block}
     Regole: max 7 voci che coprono arrivo, permanenza e rientro; ogni voce 1-3 refs totali;
     ogni tappa in UNA sola voce (mai ripetere lo stesso posto in due fasi);
+    OGNI indice curato sopra deve comparire in almeno una voce (copertura totale);
     se non ci sono voli curati, non nominare mai voli o mancanze (transizioni solo sul percorso);
     day_label con intervallo + zona (es. 'Giorni 1-7 · Heraklion e dintorni');
     transition di una riga su spostamenti/pernottamenti, senza inventare servizi e SENZA url.
+    Ogni transition DEVE nominare almeno una delle tappe (nome del posto, non genericità
+    come 'tappe corte' o 'senza fretta' da sole): lega sempre la tratta a un luogo concreto.
     Per fixed preferisci fasi per zone; per van_life/road_trip tratte con pernottamenti a bordo;
     per sailing tratte costiere. Rispondi solo con le voci utili."""

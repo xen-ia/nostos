@@ -24,7 +24,8 @@ EMAIL = EmailContent(
     subject="Il tuo viaggio",
     opening="Partiamo.",
     understanding="Capisco che cerchi mare lontano dalle folle.",
-    resources=[{"name": "POI", "description": "", "price": "", "link": "https://example.com/poi"}],
+    resources=[{"name": "POI", "description": "Tempio sul mare tra scogliere e salsedine, perfetto al tramonto.",
+                "price": "", "link": "https://example.com/poi"}],
 )
 
 

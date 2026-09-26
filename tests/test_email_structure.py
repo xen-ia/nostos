@@ -15,7 +15,7 @@ def test_no_details_no_block_only_anchors():
     html = build_html_email({**BASE, "travel_mode": "van_life", "mobility": ["auto", "van"],
                              "feedback_link": "https://x.example/f?trip_id=1&token=abc"})
     assert "<details" not in html
-    assert "Lascia un feedback" in html
+    assert "Parliamone insieme" in html
     assert "https://x.example/f?trip_id=1&amp;token=abc" in html
 
 
@@ -35,50 +35,60 @@ def test_cta_targets_min_44px():
 CARD_CONTENT = {**BASE,
                 "resources": [{"name": "Hotel X", "description": "Nice place",
                                "price": "100 EUR", "link": "https://h.example/x"}],
-                "sections_map": {"maps": ["https://h.example/x"]}}
+                "sections_map": {"maps": ["https://h.example/x"]},
+                "itinerary_days": [{"day_label": "Le tappe",
+                                    "links": ["https://h.example/x"], "transition": ""}]}
 
 
 def test_cards_use_sibling_anchors_no_nesting():
-    html = build_html_email({**CARD_CONTENT,
-                             "feedback_link": "https://x.example/f"})
+    content = {**CARD_CONTENT,
+               "resources": CARD_CONTENT["resources"] + [
+                   {"name": "Taverna Y", "description": "Cucina vera",
+                    "price": "", "link": "https://y.example/t"}],
+               "sections_map": {"maps": ["https://h.example/x", "https://y.example/t"]},
+               "itinerary_days": [{"day_label": "Le tappe",
+                                   "links": ["https://h.example/x", "https://y.example/t"],
+                                   "transition": ""}],
+               "feedback_link": "https://x.example/f"}
+    html = build_html_email(content)
     # No anchor may contain another anchor anywhere in the email.
     assert not re.search(r"<a\b[^>]*>(?:(?!</a>).)*<a\b", html, re.S | re.I)
-    # Card exposes exactly the title link + the Apri link as siblings.
-    cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
-    assert len(cards) == 1
-    assert len(re.findall(r"<a\b", cards[0])) == 2
-    assert "Hotel X" in cards[0] and "Apri &rarr;" in cards[0]
+    # Story stop exposes exactly one action link (title is plain text, no boxes).
+    assert html.count("https://h.example/x") == 1  # hero only
+    assert html.count("https://y.example/t") == 1  # phase only
+    assert "Taverna Y" in html and "Vedi →" in html
+    assert '<table class="card-frame"' not in html
 
 
 def test_reply_gone_in_all_modes():
     with_link = build_html_email({**BASE, "feedback_link": "https://x.example/f"})
     assert "Rispondi per continuare" not in with_link
     assert "mailto:" not in with_link
-    assert "Lascia un feedback" in with_link
+    assert "Parliamone insieme" in with_link
     without_link = build_html_email({**BASE})
     assert "Rispondi per continuare" not in without_link
     assert "mailto:" not in without_link
-    assert "Lascia un feedback" not in without_link
+    assert "Parliamone insieme" not in without_link
 
 
 def test_no_empty_button_cells():
     single = build_html_email({**BASE, "feedback_link": "https://x.example/f"})
     assert single.count('class="btn-cell"') == 1
-    assert "Lascia un feedback" in single
+    assert "Parliamone insieme" in single
     none = build_html_email({**BASE})
     assert 'class="btn-cell"' not in none
-    assert "Lascia un feedback" not in none
+    assert "Parliamone insieme" not in none
     assert "Rispondi per continuare" not in none
     assert "mailto:" not in none
 
 
 def test_cta_copy_is_one_way():
     from src.core.orchestrator import CTA
-    assert CTA == "Com'è andata? Lasciaci un feedback."
+    assert CTA == "Il prossimo passo è umano: dimmi cosa cambiare e ne parliamo insieme."
     html = build_html_email({**BASE, "cta": CTA,
                              "feedback_link": "https://x.example/f"})
     assert "IL TUO PARERE" in html.upper()
-    assert "IL PROSSIMO PASSO" not in html.upper()
+    assert "IL PROSSIMO PASSO È UMANO" in html.upper()
     assert "rispondi" not in html.lower()
 
 
@@ -109,16 +119,22 @@ def test_bracket_ids_stripped_from_html_and_text():
     assert "196 EUR" in html  # price value survives, only the ID is stripped
 
 
-def test_hero_flight_excluded_from_resource_groups():
+def test_hero_place_renders_big_without_logistics():
     link = "https://flights.example/abc"
+    maps_link = "https://maps.example/taverna"
     content = {
         **BASE,
         "resources": [{"name": "Volo easyJet Milano → Inverness", "description": "Diretto",
-                       "price": "196 EUR", "link": link}],
-        "sections_map": {"flights": [link]},
+                       "price": "196 EUR", "link": link},
+                      {"name": "Taverna X", "description": "", "why": "Cucina vera.",
+                       "price": "", "link": maps_link}],
+        "sections_map": {"flights": [link], "maps": [maps_link]},
+        "itinerary_days": [{"day_label": "Le tappe", "links": [maps_link], "transition": ""}],
     }
     html = build_html_email(content)
-    assert "Come arrivare" in html and "Vedi il volo" in html  # hero still renders
+    assert "Taverna X" in html and "Cucina vera." in html  # hero luogo renders
+    assert "Come arrivare" not in html  # no arrival hero block anymore
+    assert "Volo:" in html and "196 EUR" in html  # logistics strip carries the flight
     assert "Voli" not in html  # hero flight must not reappear as a grouped card
     cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
     assert all(link not in card for card in cards)
@@ -136,12 +152,13 @@ def test_hero_flight_excluded_but_other_flights_grouped():
              "link": other},
         ],
         "sections_map": {"flights": [hero, other]},
+        "itinerary_days": [{"day_label": "Le tappe", "links": [other], "transition": ""}],
     }
     html = build_html_email(content)
-    assert "Voli" in html
+    assert "L'itinerario" in html
     assert other in html
-    cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
-    assert all(hero not in card for card in cards)
+    assert html.count(f'href="{hero}"') == 1  # logistics strip only, never a stop
+    assert '<table class="card-frame"' not in html  # no box grid anymore
 
 
 def test_raw_flight_name_humanized_and_price_deduped():
@@ -158,11 +175,12 @@ def test_raw_flight_name_humanized_and_price_deduped():
              "price": "250 EUR", "link": other},
         ],
         "sections_map": {"flights": [hero, other]},
+        "itinerary_days": [{"day_label": "Le tappe", "links": [other], "transition": ""}],
     }
     html = build_html_email(content)
     assert "departure 2026-12-21" not in html
-    assert "Volo easyJet" in html
-    assert "Volo Ryanair" in html
+    assert "easyJet · MXP – INV" in html
+    assert "Ryanair · BGY – EDI" in html
     assert html.count("196 EUR") == 1  # price pill only, description duplicate stripped
     assert html.count("250 EUR") == 1
 
@@ -334,3 +352,12 @@ def test_flight_price_blanked_when_no_curated_price():
                               "link": "https://example.com/f"}]}
     out = TripOrchestrator._apply_curated_flight_prices(content, curated)
     assert out["resources"][0]["price"] == ""
+
+
+def test_is_generic_catches_filler_and_short_text():
+    assert TripOrchestrator._is_generic("Una possibile sosta per il van lungo il percorso.")
+    assert TripOrchestrator._is_generic("Una base per una notte.")
+    assert TripOrchestrator._is_generic("Bello.")
+    assert not TripOrchestrator._is_generic(
+        "Taverna di famiglia ad Archanes dove assaggiare il dakos con olio del frantoio accanto.")
+    assert not TripOrchestrator._is_generic("")

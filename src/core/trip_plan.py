@@ -2,13 +2,25 @@
 import logging
 import re
 
-from src.core.models import TripPlan
+from src.core.models import DayStop, TripPlan
 
 logger = logging.getLogger("nostos.trip_plan")
 
 MAX_DAYS = 7
 _URL_RE = re.compile(r"https?://|www\.")
 _FLIGHT_WORD_RE = re.compile(r"\bvoli?\b", re.IGNORECASE)
+
+
+def transition_names_a_stop(transition: str, stop_names: list[str]) -> bool:
+    """True when the transition names at least one stop (significant word,
+    len>4, case-insensitive). Generic filler ('tappe corte') fails."""
+    text = (transition or "").lower()
+    words = set()
+    for name in stop_names:
+        for token in re.findall(r"[a-zà-ÿ]+", (name or "").lower()):
+            if len(token) > 4:
+                words.add(token)
+    return any(w in text for w in words)
 
 
 def _strip_flight_mentions(transition: str) -> str:
@@ -45,4 +57,18 @@ def sanitize_plan(plan: TripPlan, flight_n: int, maps_n: int, places_n: int) -> 
             continue
         kept.append(day.model_copy(update={"flight_refs": flights, "poi_refs": pois,
                                             "stay_refs": stays, "transition": transition}))
+    if len(kept) < MAX_DAYS:
+        missing_flights = [i for i in range(flight_n) if i not in seen_flights(kept)]
+        missing_pois = [i for i in range(maps_n) if i not in seen_pois]
+        missing_stays = [i for i in range(places_n) if i not in seen_stays]
+        if missing_flights or missing_pois or missing_stays:
+            logger.info("trip plan coverage: %d refs appended to final phase",
+                        len(missing_flights) + len(missing_pois) + len(missing_stays))
+            kept.append(DayStop(day_label="Altre tappe lungo il percorso",
+                                flight_refs=missing_flights, poi_refs=missing_pois,
+                                stay_refs=missing_stays))
     return plan.model_copy(update={"days": kept})
+
+
+def seen_flights(days: list) -> set[int]:
+    return {i for day in days for i in day.flight_refs}
