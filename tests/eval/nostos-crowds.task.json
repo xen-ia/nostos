@@ -1,0 +1,8 @@
+{
+ "kind": "noul",
+ "instructions": "Cerca ESPLICITAMENTE posti autentici fuori dalle rotte turistiche (segnali come: autentico, non turistico, lontano dalle folle, fuori rotta)? Relax, natura o lentezza da soli NON bastano.",
+ "criteria": {
+  "true": "evita esplicitamente le folle",
+  "false": "nessun segnale anti-folla"
+ }
+}

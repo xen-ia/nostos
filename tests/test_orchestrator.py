@@ -267,7 +267,7 @@ async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monke
                                     database=db, trip_id=trip.id)
     await _run(orchestrator)
 
-    assert sorted(seen_outbound_dates) == sorted([w1_start, w2_start])  # both windows probed
+    assert sorted(seen_outbound_dates) == sorted([w1_start, w2_start, w2_start])  # both windows probed + winner revalidation
     assert stay_windows[-1] == w2_start  # stays aligned to cheapest window
     assert email.sent and db.saved  # trip completes
 
@@ -298,7 +298,7 @@ async def test_unusable_period_plan_falls_back(monkeypatch):
                                     database=FakeDatabase(), trip_id=trip.id)
     await _run(orchestrator)
 
-    assert len(seen) == 1  # exactly the fallback window
+    assert len(seen) == 2  # fallback window probe + winner revalidation
 
 
 async def test_start_only_trip_probes_one_way_flight_without_period_llm_call(monkeypatch):
@@ -331,7 +331,7 @@ async def test_start_only_trip_probes_one_way_flight_without_period_llm_call(mon
                                     database=db, trip_id=trip.id)
     await _run(orchestrator)
 
-    assert len(flight_calls) == 1  # exactly one probe
+    assert len(flight_calls) == 2  # matrix probe + winner revalidation of the same combo
     args, _ = flight_calls[0]
     assert args[2] == "2026-09-01"  # outbound = trip start
     assert args[3] is None  # end_date=None -> one-way search (type=2)
@@ -375,7 +375,10 @@ async def test_stages_run_in_order_and_package_records_tool_calls(monkeypatch):
     assert len(db.saved) == 1
     package = db.saved[0]["package"]
     assert package["tool_calls"], "every serpapi call must be logged"
-    assert all(set(tc) == {"engine", "params", "result_count"} for tc in package["tool_calls"])
+    assert all(set(tc) == {"engine", "params", "result_count"}
+               or set(tc) in ({"engine", "days"}, {"engine", "skipped"})  # jev-itinerary planner entry
+               or set(tc) == {"engine", "revalidated", "reason"}  # winner revalidation entry
+               for tc in package["tool_calls"])
     assert "corpus" in package and "curated" in package
 
 
@@ -763,7 +766,8 @@ async def test_double_fallback_bands_use_existing_path(monkeypatch):
 
 async def test_flag_off_path_byte_identical(monkeypatch):
     """Default settings (provider llm-fallback) -> build_decision_client returns None,
-    existing path runs unchanged: no jev-router entry, legacy tool_call shapes only."""
+    existing path runs unchanged: no jev-router entry, legacy tool_call shapes
+    plus the jev-itinerary planner entry only."""
     import src.core.orchestrator as orch
     from src.settings import get_settings
 
@@ -799,6 +803,8 @@ async def test_flag_off_path_byte_identical(monkeypatch):
     package = db.saved[0]["package"]
     assert _jev_tool_calls(package) == []
     assert all(set(tc) == {"engine", "params", "result_count"} or set(tc) == {"engine", "skipped", "reason"}
+               or set(tc) in ({"engine", "days"}, {"engine", "skipped"})  # jev-itinerary planner entry
+               or set(tc) == {"engine", "revalidated", "reason"}  # winner revalidation entry
                for tc in package["tool_calls"])
 
 

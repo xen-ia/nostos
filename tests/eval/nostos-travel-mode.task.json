@@ -1,0 +1,11 @@
+{
+ "kind": "choice",
+ "instructions": "Modalità di viaggio prevalente.",
+ "criteria": {
+  "fixed": "base fissa",
+  "road_trip": "tappe in auto o moto",
+  "van_life": "dormire nel veicolo lungo il percorso",
+  "sailing": "barca a vela o catamarano",
+  "mixed": "combinazione"
+ }
+}

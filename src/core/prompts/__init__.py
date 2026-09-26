@@ -229,3 +229,23 @@ def build_email_prompt(
     - NEVER print internal IDs like [M0], [P2] in the email — cite only bracket IDs from the RESOURCES above.
     - If mobility includes 'auto'/'moto'/'barca': weave a short practical paragraph about getting around locally.
     """
+
+
+def build_plan_prompt(trip, intent, flights_block: str, maps_block: str, places_block: str, trip_days: int) -> str:
+    return f"""Articola questo viaggio in fasi visitabili per l'email.
+    Durata: {trip_days} giorni. Travel mode: {intent.travel_mode or 'not specified'}.
+    Interessi: {', '.join(intent.interests) or 'not specified'}.
+    Risorse curate (riferisci SOLO questi indici zero-based per categoria):
+    Voli:
+    {flights_block}
+    POI:
+    {maps_block}
+    Alloggi:
+    {places_block}
+    Regole: max 7 voci che coprono arrivo, permanenza e rientro; ogni voce 1-3 refs totali;
+    ogni tappa in UNA sola voce (mai ripetere lo stesso posto in due fasi);
+    se non ci sono voli curati, non nominare mai voli o mancanze (transizioni solo sul percorso);
+    day_label con intervallo + zona (es. 'Giorni 1-7 · Heraklion e dintorni');
+    transition di una riga su spostamenti/pernottamenti, senza inventare servizi e SENZA url.
+    Per fixed preferisci fasi per zone; per van_life/road_trip tratte con pernottamenti a bordo;
+    per sailing tratte costiere. Rispondi solo con le voci utili."""

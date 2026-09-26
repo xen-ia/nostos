@@ -1,0 +1,8 @@
+{
+ "kind": "noul",
+ "instructions": "Budget esplicitamente RISTRETTO (segnali come: limitato, max, economico, low-cost)? Un importo dichiarato senza segnali di ristrettezza NON basta.",
+ "criteria": {
+  "true": "budget ristretto",
+  "false": "nessun vincolo di budget"
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "kind": "choice",
+ "instructions": "Ritmo del viaggio, giudicato dalle giornate descritte: tappe tirate, tante cose al giorno o programma fitto e intenso; mix di giorni pieni e vuoti e moderato; lentezza, relax e giornate vuote e rilassato.",
+ "criteria": {
+  "rilassato": "lento e rilassato",
+  "moderato": "moderato",
+  "intenso": "intenso"
+ }
+}

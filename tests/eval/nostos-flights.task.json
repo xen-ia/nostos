@@ -1,0 +1,8 @@
+{
+ "kind": "noul",
+ "instructions": "Serve un volo per ARRIVARE? Se partenza e destinazione sono in paesi diversi, o la destinazione è un'isola, rispondere sì anche se in loco si guida.",
+ "criteria": {
+  "true": "serve un volo per arrivare",
+  "false": "nessun volo necessario"
+ }
+}
