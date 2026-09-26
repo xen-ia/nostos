@@ -1,0 +1,11 @@
+{
+ "kind": "choice",
+ "instructions": "Stile di pernottamento più adatto.",
+ "criteria": {
+  "van": "van o camper",
+  "camping": "campeggio",
+  "homestay": "homestay o B&B",
+  "hotel": "hotel",
+  "boat": "barca"
+ }
+}

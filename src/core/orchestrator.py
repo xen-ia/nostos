@@ -27,6 +27,7 @@ from src.core.models import (
     ResolvedDestinations,
     TargetQueries,
     TripIntent,
+    TripPlan,
 )
 from src.core.prompts import (
     build_curation_prompt,
@@ -47,7 +48,7 @@ logger = logging.getLogger("nostos.orchestrator")
 MAX_WINDOWS = 2
 MAX_TARGET_QUERIES = 4
 CORPUS_CAP = 8
-MAX_FLIGHT_PROBES = 8
+MAX_FLIGHT_PROBES = 12
 MAX_DEPARTURE_AIRPORTS = 4
 MAX_RESOLVED_DESTINATIONS = 2
 FLEXIBLE_WINDOW_SHIFT_DAYS = 7
@@ -244,6 +245,8 @@ class TripOrchestrator:
                         "only a flight was found: not enough for a useful email, trip aborted without sending"
                     )
                 research["curated"] = curated
+                trip_plan = await self._plan_itinerary(trip, intent, curated)
+                research["trip_plan"] = trip_plan
                 email_content, body_text, body_html, package = await self._compose_email(trip, intent, research)
 
             async with self._timed("save_history"):
@@ -365,6 +368,19 @@ class TripOrchestrator:
                 if item.get("description"):
                     lines.append(f"   {item['description']}")
                 lines.append(f"   {item['link']}")
+
+        itinerary_days = email_content.get("itinerary_days", [])
+        if itinerary_days:
+            lines.append("L'itinerario:")
+            names_by_link = {r.get("link"): r.get("name") for r in email_content.get("resources", [])}
+            for day in itinerary_days:
+                lines.append(day.get("day_label", ""))
+                for link in day.get("links") or []:
+                    if link in names_by_link:
+                        lines.append(f"- {names_by_link[link]}")
+                if day.get("transition"):
+                    lines.append(f"  {day['transition']}")
+            lines.append("")
 
         appendix = email_content.get("appendix", {})
         if appendix:
@@ -621,8 +637,9 @@ class TripOrchestrator:
             key=lambda cf: cf[1].get("price_eur") if cf[1].get("price_eur") is not None else float("inf"),
             default=None,
         )
-        flights_list = [best[1]] if best else []
-        winning_window = best[0][0] if best else (flight_windows[0] if flight_windows else (trip.start_date, trip.end_date))
+        chosen = await self._revalidate_winner(best, candidates, tool_calls) if best else None
+        flights_list = [chosen[1]] if chosen else []
+        winning_window = chosen[0][0] if chosen else (flight_windows[0] if flight_windows else (trip.start_date, trip.end_date))
 
         check_in = trip.start_date or winning_window[0]
         check_out = trip.end_date or winning_window[1]
@@ -673,10 +690,18 @@ class TripOrchestrator:
 
         maps_items = [*anchors, *(i for lst in maps_results for i in lst)]
         linked_maps = [i for i in maps_items if i.get("link") and not _is_junk_link(i.get("link"))]
-        dropped_junk = [i.get("name") for i in maps_items
-                        if i.get("link") and _is_junk_link(i.get("link"))]
-        if dropped_junk:
-            logger.warning("maps corpus: dropped %d junk-domain entries: %s", len(dropped_junk), dropped_junk)
+        rescued_junk = 0
+        for it in maps_items:
+            if not it.get("link") or not _is_junk_link(it.get("link")):
+                continue
+            generated = _maps_search_link(it.get("name"), it.get("address"))
+            if generated is None:
+                continue
+            it["link"] = generated
+            linked_maps.append(it)
+            rescued_junk += 1
+        if rescued_junk:
+            logger.info("maps corpus: rescued %d junk-domain entries with generated Maps links", rescued_junk)
         rescued = 0
         nameless_drops: list = []
         for it in maps_items:
@@ -744,6 +769,60 @@ class TripOrchestrator:
         if maps_items:
             corpus["maps"] = pick_top_pois(maps_items, scores, limit=len(maps_items))
 
+    #: Re-probe the winning flight combo once before compose: if the price moved
+    #: up more than this fraction (or the link is gone), fall back to the next
+    #: cheapest candidate. Fail-open: errors keep the original winner.
+    PRICE_RISE_SWITCH = 0.15
+
+    async def _revalidate_winner(
+        self,
+        winner: tuple[tuple[str, str | None], str, str, dict],
+        candidates: list[tuple[tuple[str, str | None], str, str, dict]],
+        tool_calls: list[dict],
+    ) -> tuple[tuple[str, str | None], str, str, dict] | None:
+        (window, arrival, departure), flight = winner[0], winner[1]
+        old_price = flight.get("price_eur")
+        try:
+            fresh = await flights.search(departure, arrival, window[0], window[1],
+                                         timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
+        except Exception as exc:  # noqa: BLE001 — validation must never abort the trip
+            logger.warning("flight revalidation failed, keeping winner: %s", type(exc).__name__)
+            tool_calls.append({"engine": "google_flights", "revalidated": False, "reason": "error"})
+            return winner
+        match = next((f for f in fresh if f.get("link") and f.get("link") == flight.get("link")), None)
+        if match is None:
+            backups = self._ranked_backups(winner, candidates)
+            tool_calls.append({"engine": "google_flights", "revalidated": False, "reason": "link_gone"})
+            return backups[0] if backups else winner
+        new_price = match.get("price_eur")
+        if (isinstance(old_price, (int, float)) and isinstance(new_price, (int, float))
+                and old_price > 0 and (new_price - old_price) / old_price > self.PRICE_RISE_SWITCH):
+            backups = self._ranked_backups(winner, candidates)
+            logger.info("flight revalidation: price %.0f -> %.0f, switching to backup", old_price, new_price)
+            tool_calls.append({"engine": "google_flights", "revalidated": True, "reason": "price_moved"})
+            return backups[0] if backups else winner
+        tool_calls.append({"engine": "google_flights", "revalidated": True, "reason": "confirmed"})
+        return winner
+
+    @staticmethod
+    def _ranked_backups(
+        winner: tuple[tuple[str, str | None], str, str, dict],
+        candidates: list[tuple[tuple[str, str | None], str, str, dict]],
+    ) -> list[tuple[tuple[str, str | None], str, str, dict]]:
+        """Candidates by ascending price, winner excluded, links deduped."""
+        ranked = sorted(
+            candidates,
+            key=lambda cf: cf[1].get("price_eur") if isinstance(cf[1].get("price_eur"), (int, float)) else float("inf"),
+        )
+        out, seen = [], set()
+        for combo, f in ranked:
+            link = f.get("link")
+            if not link or link == winner[1].get("link") or link in seen:
+                continue
+            seen.add(link)
+            out.append((combo, f))
+        return out
+
     @staticmethod
     def _build_flight_combos(
         windows: list[tuple[str, str | None]], arrivals: list[str], departures: list[str]
@@ -797,10 +876,42 @@ class TripOrchestrator:
             }
         return curated
 
+    async def _plan_itinerary(self, trip: TripResponse, intent: TripIntent, curated: dict) -> TripPlan:
+        from src.core.models import TripPlan
+        from src.core.prompts import build_plan_prompt
+        from src.core.trip_plan import sanitize_plan
+        from datetime import date
+        if not trip.start_date or not trip.end_date:
+            return TripPlan()
+        try:
+            days = (date.fromisoformat(trip.end_date) - date.fromisoformat(trip.start_date)).days + 1
+        except ValueError:
+            return TripPlan()
+        if days <= 0:
+            return TripPlan()
+        try:
+            raw = await self._llm.extract(
+                build_plan_prompt(trip, intent,
+                                  self._render_flights(curated["flights"], numbered=True),
+                                  self._render_maps(curated["maps"], numbered=True),
+                                  self._render_places(curated["places"], numbered=True),
+                                  days),
+                TripPlan,
+            )
+            return sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
+        except Exception as exc:
+            logger.warning("trip plan skipped: %s: %s", type(exc).__name__, exc)
+            return TripPlan()
+
     async def _compose_email(
         self, trip: TripResponse, intent: TripIntent, research: dict
     ) -> tuple[dict, str, str, dict]:
         corpus, curated = research["corpus"], research["curated"]
+        trip_plan = research.get("trip_plan", TripPlan())
+        if trip_plan.days:
+            research["tool_calls"].append({"engine": "jev-itinerary", "days": len(trip_plan.days)})
+        else:
+            research["tool_calls"].append({"engine": "jev-itinerary", "skipped": True})
         allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
 
         resolve_rationale = research.get("geo", {}).get("resolve_rationale", "")
@@ -823,6 +934,9 @@ class TripOrchestrator:
                 content["resources"] = report.valid
                 if not content["resources"]:
                     raise NoResourcesError("email composition could not ground any real resource")
+        content = self._ensure_flight_hero(content, curated)
+        content = self._apply_curated_flight_prices(content, curated)
+        content = self._clean_resource_prices(content)
 
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
@@ -848,6 +962,16 @@ class TripOrchestrator:
         content["travel_mode"] = intent.travel_mode
         content["mobility"] = intent.mobility_preferences
         content["accommodation_style"] = intent.accommodation_style
+        flight_links = [r["link"] for r in curated["flights"] if r.get("link")]
+        maps_links = [r["link"] for r in curated["maps"] if r.get("link")]
+        places_links = [r["link"] for r in curated["places"] if r.get("link")]
+        itinerary_days = []
+        for day in trip_plan.days:
+            links = ([flight_links[i] for i in day.flight_refs if i < len(flight_links)]
+                     + [maps_links[i] for i in day.poi_refs if i < len(maps_links)]
+                     + [places_links[i] for i in day.stay_refs if i < len(places_links)])
+            itinerary_days.append({"day_label": day.day_label, "links": links, "transition": day.transition})
+        content["itinerary_days"] = itinerary_days
         body_text = self._compose_body_text(content)
         body_html = build_html_email(content)
         package = {
@@ -856,6 +980,7 @@ class TripOrchestrator:
             "corpus": corpus,
             "curated": curated,
             "curated_rationale": curated.get("rationale", ""),
+            "trip_plan": research.get("trip_plan", TripPlan()).model_dump(),
             "tool_calls": research["tool_calls"],
         }
         return content, body_text, body_html, package
@@ -922,11 +1047,13 @@ class TripOrchestrator:
         def label(i: int) -> str:
             return f"[F{i}] " if numbered else ""
 
-        return "\n".join(
-            f"{label(i)}{it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
-            f"departure {it.get('departure_date')}, {it.get('price_eur')} EUR — {it.get('link')}"
-            for i, it in enumerate(items)
-        )
+        def flight_line(i: int, it: dict) -> str:
+            price = it.get("price_eur")
+            price_txt = f", {price} EUR" if isinstance(price, (int, float)) else ""
+            return (f"{label(i)}{it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
+                    f"departure {it.get('departure_date')}{price_txt} — {it.get('link')}")
+
+        return "\n".join(flight_line(i, it) for i, it in enumerate(items))
 
     @staticmethod
     def _render_maps(items: list[dict], numbered: bool = False) -> str:
@@ -949,7 +1076,50 @@ class TripOrchestrator:
         def label(i: int) -> str:
             return f"[P{i}] " if numbered else ""
 
-        return "\n".join(
-            f"{label(i)}{it.get('name')} — {it.get('price_per_night_eur')} EUR/night — {it.get('link')}"
-            for i, it in enumerate(items)
-        )
+        def place_line(i: int, it: dict) -> str:
+            price = it.get("price_per_night_eur")
+            price_txt = f"{price} EUR/night" if isinstance(price, (int, float)) else "prezzo non indicato"
+            return f"{label(i)}{it.get('name')} — {price_txt} — {it.get('link')}"
+
+        return "\n".join(place_line(i, it) for i, it in enumerate(items))
+
+    @staticmethod
+    def _clean_resource_prices(content: dict) -> dict:
+        """Blank prices that are missing or leaked 'None ...' strings (SerpAPI
+        nulls echoed by the LLM), so neither HTML pills nor text lines print them."""
+        for resource in content.get("resources", []):
+            price = resource.get("price")
+            if not price or str(price).strip().lower().startswith("none"):
+                resource["price"] = ""
+        return content
+
+    @staticmethod
+    def _ensure_flight_hero(content: dict, curated: dict) -> dict:
+        """Deterministic hero guarantee: if the LLM cited no curated flight,
+        append one built from the winning researched flight (never invented:
+        name/date/price/link all come from SerpAPI data)."""
+        flight_links = {r.get("link") for r in content.get("resources", [])}
+        for f in curated.get("flights", []):
+            if not f.get("link") or f["link"] in flight_links:
+                continue
+            name = f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}".strip()
+            desc = f"Partenza {f['departure_date']}" if f.get("departure_date") else ""
+            price = f"{f['price_eur']} EUR" if isinstance(f.get("price_eur"), (int, float)) else ""
+            content.setdefault("resources", []).append(
+                {"name": name or "Volo", "description": desc, "price": price, "link": f["link"]})
+            logger.info("flight hero force-included from curated winner: %s", f["link"])
+            break
+        return content
+
+    @staticmethod
+    def _apply_curated_flight_prices(content: dict, curated: dict) -> dict:
+        """Overwrite flight price prose with researched numbers: the LLM writes
+        price text freely and validation only checks links, so figures can drift."""
+        by_link = {f.get("link"): f for f in curated.get("flights", []) if f.get("link")}
+        for resource in content.get("resources", []):
+            flight = by_link.get(resource.get("link"))
+            if flight is None:
+                continue
+            price = flight.get("price_eur")
+            resource["price"] = f"{price} EUR" if isinstance(price, (int, float)) else ""
+        return content

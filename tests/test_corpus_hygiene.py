@@ -115,6 +115,44 @@ def test_maps_search_link_no_name():
     assert _maps_search_link("   ", None) is None
 
 
+async def test_junk_domain_maps_item_rescued_with_generated_link(monkeypatch):
+    """Restaurants whose only web presence is social keep the POI with a
+    generated Maps link — no social URL ever reaches the email."""
+    from tests.fakes import FakeDatabase, FakeLLM, make_trip
+    from tests.test_flight_matrix import EMAIL, _run
+    from src.core.models import TripIntent
+
+    trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
+
+    async def fake_maps(query, **kwargs):
+        return [
+            {"name": "Taverna To Stachi", "address": "Archanes, Crete",
+             "type": "restaurant", "rating": 4.8,
+             "link": "https://www.instagram.com/tostachi/"},
+            {"name": "Good POI", "type": "t", "rating": 4.5,
+             "link": "https://example.com/poi"},
+        ]
+
+    async def fake_flights(*args, **kwargs):
+        return []
+
+    async def fake_places(**kwargs):
+        return [{"name": "Hotel Generico", "price_per_night_eur": 80,
+                 "link": "https://example.com/hotel"}]
+
+    monkeypatch.setattr("src.core.orchestrator.flights.search", fake_flights)
+    monkeypatch.setattr("src.core.orchestrator.maps.research", fake_maps)
+    monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
+    intent = TripIntent(destination="Creta", accommodation_style="hotel")
+    db = FakeDatabase()
+    await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
+    corpus_maps = db.saved[0]["package"]["corpus"]["maps"]
+    rescued = next(i for i in corpus_maps if i.get("name") == "Taverna To Stachi")
+    assert "google.com/maps/search" in rescued["link"]
+    assert "instagram.com" not in rescued["link"]
+    assert all("instagram.com" not in (i.get("link") or "") for i in corpus_maps)
+
+
 async def test_linkless_maps_item_rescued_with_generated_link(monkeypatch):
     from tests.fakes import FakeDatabase, FakeLLM, make_trip
     from tests.test_flight_matrix import EMAIL, _run

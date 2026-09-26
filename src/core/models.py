@@ -159,3 +159,16 @@ class ResolvedDestinations(BaseModel):
 
 class DepartureAirports(BaseModel):
     codes: list[str] = Field(default_factory=list, description="1..4 codici IATA candidati di partenza")
+
+
+class DayStop(BaseModel):
+    day_label: str = Field(description="Intervallo + zona, es. 'Giorni 1-7 · Heraklion e dintorni'")
+    flight_refs: list[int] = Field(default_factory=list, description="Indici zero-based nei voli curati")
+    poi_refs: list[int] = Field(default_factory=list, description="Indici zero-based nei POI curati")
+    stay_refs: list[int] = Field(default_factory=list, description="Indici zero-based negli alloggi curati")
+    transition: str = Field(default="", description="Logica spostamento in italiano, mai URL")
+
+
+class TripPlan(BaseModel):
+    days: list[DayStop] = Field(default_factory=list, description="Max 7 voci condensate")
+    rationale: str = Field(default="", description="Perché questa articolazione, in italiano")

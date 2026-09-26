@@ -282,3 +282,55 @@ def test_build_appendix_excludes_shown_and_caps_3():
                   "https://s.example/s2", "https://s.example/p1", "https://s.example/p2"}
     empty = TripOrchestrator._build_appendix(research, exclude_links=all_corpus)
     assert empty["groups"] == []
+
+
+def test_hero_force_included_when_llm_omits_flight():
+    curated = {"flights": [{"airline": "SKY express", "from": "MXP", "to": "HER",
+                             "departure_date": "2026-12-15", "price_eur": 222,
+                             "link": "https://example.com/f"}],
+               "maps": [], "places": []}
+    content = {"resources": [{"name": "Taverna", "description": "", "price": "",
+                              "link": "https://example.com/t"}]}
+    out = TripOrchestrator._ensure_flight_hero(content, curated)
+    links = [r["link"] for r in out["resources"]]
+    assert "https://example.com/f" in links
+    hero = next(r for r in out["resources"] if r["link"] == "https://example.com/f")
+    assert hero["price"] == "222 EUR"
+    assert "SKY" in hero["name"]
+
+
+def test_hero_not_duplicated_when_present():
+    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
+                             "departure_date": "d", "price_eur": 100,
+                             "link": "https://example.com/f"}],
+               "maps": [], "places": []}
+    content = {"resources": [{"name": "Volo A", "description": "", "price": "100 EUR",
+                              "link": "https://example.com/f"}]}
+    out = TripOrchestrator._ensure_flight_hero(content, curated)
+    assert [r["link"] for r in out["resources"]].count("https://example.com/f") == 1
+
+
+def test_flight_price_overwritten_from_curated():
+    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
+                             "departure_date": "d", "price_eur": 222,
+                             "link": "https://example.com/f"}],
+               "maps": [], "places": []}
+    content = {"resources": [{"name": "Volo A", "description": "", "price": "999 EUR",
+                              "link": "https://example.com/f"},
+                             {"name": "Taverna", "description": "", "price": "cena 30 EUR",
+                              "link": "https://example.com/t"}]}
+    out = TripOrchestrator._apply_curated_flight_prices(content, curated)
+    prices = {r["link"]: r["price"] for r in out["resources"]}
+    assert prices["https://example.com/f"] == "222 EUR"
+    assert prices["https://example.com/t"] == "cena 30 EUR"
+
+
+def test_flight_price_blanked_when_no_curated_price():
+    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
+                             "departure_date": "d", "price_eur": None,
+                             "link": "https://example.com/f"}],
+               "maps": [], "places": []}
+    content = {"resources": [{"name": "Volo A", "description": "", "price": "100 EUR",
+                              "link": "https://example.com/f"}]}
+    out = TripOrchestrator._apply_curated_flight_prices(content, curated)
+    assert out["resources"][0]["price"] == ""

@@ -1,3 +1,4 @@
+from src.services.apis.email import _render_itinerary
 from src.services.apis.email import build_html_email
 
 CONTENT = {
@@ -52,3 +53,13 @@ def test_leftover_resources_render_flat():
     content["sections_map"] = {}
     html = build_html_email(content)
     assert "Orfano" in html
+
+
+def test_render_itinerary_empty_is_empty():
+    assert _render_itinerary([], {}) == ""
+
+
+def test_render_itinerary_reuses_cards():
+    card = {"name": "Taverna X", "description": "cucina locale", "price": "", "link": "https://x.it"}
+    html = _render_itinerary([{"day_label": "Giorni 1-7 · X", "links": ["https://x.it"], "transition": "tappe corte."}], {"https://x.it": card})
+    assert "Giorni 1-7" in html and "Taverna X" in html and "tappe corte" in html

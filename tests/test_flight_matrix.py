@@ -235,7 +235,8 @@ async def test_hard_dates_probe_exactly_one_window(monkeypatch):
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     await _run(trip, _make_llm(), FakeDatabase())
 
-    assert starts == ["2026-09-01"]
+    # one matrix probe plus the winner revalidation of the same combo
+    assert starts == ["2026-09-01", "2026-09-01"]
 
 
 async def test_flexible_dates_probe_three_deduped_windows(monkeypatch):
@@ -250,7 +251,9 @@ async def test_flexible_dates_probe_three_deduped_windows(monkeypatch):
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     await _run(trip, _make_llm(), FakeDatabase())
 
+    # three matrix windows plus the winner revalidation (cheapest = first probed = base window)
     assert sorted(combos) == [("2026-08-25", "2026-09-03"),
+                              ("2026-09-01", "2026-09-10"),
                               ("2026-09-01", "2026-09-10"),
                               ("2026-09-08", "2026-09-17")]
 
@@ -284,20 +287,21 @@ async def test_absent_dates_still_use_period_plan_windows(monkeypatch):
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     await _run(trip, llm, FakeDatabase())
 
-    assert sorted(starts) == sorted([w1_start, w2_start])
+    # two matrix windows plus the winner revalidation (cheapest = first probed)
+    assert sorted(starts) == sorted([w1_start, w2_start, w1_start])
 
 
 # --- C3 cap: MAX_FLIGHT_PROBES with windows -> arrivals -> departures priority ---
 
 
-async def test_cap_keeps_eight_probes_covering_all_windows_first(monkeypatch):
+async def test_cap_keeps_twelve_probes_covering_all_windows_first(monkeypatch):
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10", flexible_dates=True)
     llm = _make_llm(
         resolved=ResolvedDestinations(destinations=[
             ResolvedPlace(name="Alpha", airport_code="AAA"),
             ResolvedPlace(name="Beta", airport_code="BBB"),
         ]),
-        departures=DepartureAirports(codes=["MXP", "LIN", "BGY"]),  # 3x2 arrivals... 3 dep x 2 arr x 3 win = 18
+        departures=DepartureAirports(codes=["MXP", "LIN", "BGY"]),  # 3 dep x 2 arr x 3 win = 18
     )
     combos = []
 
@@ -309,15 +313,92 @@ async def test_cap_keeps_eight_probes_covering_all_windows_first(monkeypatch):
     _patch_searches(monkeypatch, flights_fn=fake_flights)
     await _run(trip, llm, FakeDatabase())
 
-    assert len(combos) == 8
+    assert len(combos) == 13  # 12 matrix probes plus the winner revalidation
     # priority: every window covered with the narrowest pair first, then extra arrivals
-    # (BBB), then extra departures (LIN) — never extra departures before all windows.
+    # (BBB), then extra departures (LIN, BGY) — never extra departures before all windows.
     expected = [
         ("MXP", "AAA", "2026-09-01"), ("MXP", "AAA", "2026-08-25"), ("MXP", "AAA", "2026-09-08"),
         ("MXP", "BBB", "2026-09-01"), ("MXP", "BBB", "2026-08-25"), ("MXP", "BBB", "2026-09-08"),
-        ("LIN", "AAA", "2026-09-01"), ("LIN", "AAA", "2026-08-25"),
+        ("LIN", "AAA", "2026-09-01"), ("LIN", "AAA", "2026-08-25"), ("LIN", "AAA", "2026-09-08"),
+        ("BGY", "AAA", "2026-09-01"), ("BGY", "AAA", "2026-08-25"), ("BGY", "AAA", "2026-09-08"),
     ]
-    assert combos == expected
+    assert combos[:12] == expected
+    assert combos[12] == expected[0], "revalidation re-probes the winning combo"
+
+
+# --- winner revalidation: fresh probe before compose ---
+
+
+def _revalidation_llm():
+    return _make_llm(
+        resolved=ResolvedDestinations(destinations=[
+            ResolvedPlace(name="Alpha", airport_code="AAA"),
+        ]),
+        departures=DepartureAirports(codes=["MXP"]),
+    )
+
+
+async def test_winner_revalidation_switches_on_price_spike(monkeypatch):
+    trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
+    calls = []
+
+    async def fake_flights(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 1:
+            return [{"airline": "A", "from": "MXP", "to": "AAA", "departure_date": "2026-09-01",
+                     "price_eur": 300, "link": "https://example.com/f/a"},
+                    {"airline": "B", "from": "MXP", "to": "AAA", "departure_date": "2026-09-01",
+                     "price_eur": 320, "link": "https://example.com/f/b"}]
+        return [{"airline": "A", "from": "MXP", "to": "AAA", "departure_date": "2026-09-01",
+                 "price_eur": 400, "link": "https://example.com/f/a"}]
+
+    _patch_searches(monkeypatch, flights_fn=fake_flights)
+    db = FakeDatabase()
+    await _run(trip, _revalidation_llm(), db)
+
+    assert len(calls) == 2, "winner combo must be re-probed once"
+    assert db.saved[0]["package"]["corpus"]["flights"][0]["link"] == "https://example.com/f/b"
+    revals = [tc for tc in db.saved[0]["package"]["tool_calls"] if "revalidated" in tc]
+    assert revals and revals[0]["reason"] == "price_moved"
+
+
+async def test_winner_revalidation_keeps_on_small_move(monkeypatch):
+    trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
+    calls = []
+
+    async def fake_flights(*args, **kwargs):
+        calls.append(args)
+        price = 300 if len(calls) == 1 else 310
+        return [{"airline": "A", "from": "MXP", "to": "AAA", "departure_date": "2026-09-01",
+                 "price_eur": price, "link": "https://example.com/f/a"}]
+
+    _patch_searches(monkeypatch, flights_fn=fake_flights)
+    db = FakeDatabase()
+    await _run(trip, _revalidation_llm(), db)
+
+    assert len(calls) == 2, "winner combo must be re-probed once"
+    assert db.saved[0]["package"]["corpus"]["flights"][0]["price_eur"] == 300
+
+
+async def test_winner_revalidation_fail_open_on_error(monkeypatch):
+    trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
+    calls = []
+
+    async def fake_flights(*args, **kwargs):
+        calls.append(args)
+        if len(calls) > 1:
+            raise RuntimeError("serpapi down")
+        return [{"airline": "A", "from": "MXP", "to": "AAA", "departure_date": "2026-09-01",
+                 "price_eur": 300, "link": "https://example.com/f/a"}]
+
+    _patch_searches(monkeypatch, flights_fn=fake_flights)
+    db = FakeDatabase()
+    store = await _run(trip, _revalidation_llm(), db)
+
+    assert len(calls) == 2, "re-probe attempted even though it errors"
+    assert db.saved[0]["package"]["corpus"]["flights"][0]["price_eur"] == 300
+    got = await store.get(db.saved[0]["trip_id"])
+    assert got.status == TripStatus.DONE
 
 
 # --- C4: maps corpus drops link-less entries ---

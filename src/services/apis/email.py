@@ -294,6 +294,32 @@ def _render_button_row(feedback_link: str) -> str:
     )
 
 
+def _render_itinerary(days: list[dict], cards_by_link: dict[str, dict]) -> str:
+    """Itinerary section: day_label + reused grounded cards + free transition.
+    Entries with no valid cards render label + transition only. Empty plan -> ""."""
+    blocks = []
+    for day in days or []:
+        label = day.get("day_label") or ""
+        cards = [cards_by_link[link] for link in day.get("links") or [] if link in cards_by_link][:3]
+        transition = day.get("transition") or ""
+        if not label and not cards and not transition:
+            continue
+        head = (f'<div style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;font-weight:600;'
+                f'color:#221D0F;margin:16px 0 8px;">{_e(label)}</div>' if label else "")
+        cards_html = "".join(_render_card(c) for c in cards)
+        trans_html = (f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',Arial,sans-serif;'
+                      f'font-size:13px;font-style:italic;line-height:1.55;color:#3B4956;margin-top:5px;">'
+                      f'{_e(transition)}</div>' if transition else "")
+        blocks.append(head + cards_html + trans_html)
+    if not blocks:
+        return ""
+    head_all = ('<div class="d-heading" style="font-family:\'Fraunces\',Georgia,serif;font-size:19px;'
+                'font-weight:600;color:#221D0F;line-height:1.4;">L\'itinerario</div>'
+                '<div class="d-hairline" style="border-top:1px solid #D0DDE9;margin-top:18px;'
+                'line-height:1px;font-size:0;">&nbsp;</div>')
+    return head_all + "".join(blocks)
+
+
 def build_html_email(content: dict) -> str:
     smap = content.get("sections_map", {})
     flight_links = set(smap.get("flights", []))
@@ -303,11 +329,14 @@ def build_html_email(content: dict) -> str:
     shown_links = {r.get("link") for r in content.get("resources", []) if r.get("link")}
     shown_links |= exclude_links
     feedback_link = content.get("feedback_link") or ""
+    plan_days = content.get("itinerary_days", [])
+    cards_by_link = {r.get("link"): r for r in content.get("resources", []) if r.get("link")}
     return load_email_template().safe_substitute(
         opening=_e(content["opening"]),
         understanding=_e(content["understanding"]),
         arrival_section=_render_arrival_block(arrival_items),
         resource_groups=_grouped_cards(content, exclude_links=exclude_links),
+        itinerary_section=_render_itinerary(plan_days, cards_by_link),
         rental_section=_render_rental_group(content),
         travel_box=_render_travel_mode_block(content.get("travel_mode"), content.get("mobility")),
         sources_section=_render_sources(content.get("appendix", {}), exclude_links=shown_links),
