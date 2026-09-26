@@ -21,6 +21,7 @@ from src.services.apis.email import (
 from src.infrastructure.database import Database
 from src.core.models import (
     Curation,
+    DayStop,
     DepartureAirports,
     EmailContent,
     PeriodPlan,
@@ -38,6 +39,7 @@ from src.core.prompts import (
     build_target_prompt,
 )
 from src.core.validation import build_allowed_resources, sanitize_windows, validate_resources
+from src.core.trip_plan import sanitize_plan
 from src.core.decision_router import route_trip
 from src.core.decision_scoring import pick_best_flight, pick_top_pois
 from src.services.apis.decisions import build_decision_client
@@ -897,11 +899,30 @@ class TripOrchestrator:
                                   self._render_places(curated["places"], numbered=True),
                                   days),
                 TripPlan,
+                max_tokens=2048,
             )
             return sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
         except Exception as exc:
-            logger.warning("trip plan skipped: %s: %s", type(exc).__name__, exc)
+            logger.warning("trip plan LLM failed, deterministic fallback: %s: %s", type(exc).__name__, exc)
+            return self._fallback_plan(curated)
+
+    @staticmethod
+    def _fallback_plan(curated: dict) -> TripPlan:
+        """Single-phase plan from curated refs (no LLM): guarantees the itinerary
+        section whenever resources exist, instead of a silent skip."""
+        from src.core.models import DayStop, TripPlan
+
+        day = DayStop(
+            day_label="Le tappe",
+            flight_refs=list(range(len(curated.get("flights", [])))),
+            poi_refs=list(range(len(curated.get("maps", [])))),
+            stay_refs=list(range(len(curated.get("places", [])))),
+        )
+        plan = sanitize_plan(TripPlan(days=[day]), len(curated.get("flights", [])),
+                             len(curated.get("maps", [])), len(curated.get("places", [])))
+        if not plan.days:
             return TripPlan()
+        return plan
 
     async def _compose_email(
         self, trip: TripResponse, intent: TripIntent, research: dict

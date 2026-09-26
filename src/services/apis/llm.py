@@ -49,7 +49,7 @@ def _first(predicate, items):
 
 
 class LLMClient(Protocol):
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         """Calls the model with a constrained tool-call and validates the output in type T."""
         ...
 
@@ -67,10 +67,10 @@ class AnthropicClient:
         self._model = model
         self._system_prompt = system_prompt or ""
 
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         response = await self._client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             system=self._system_prompt,
             tools=[make_extract_tool(model)],
             tool_choice={"type": "tool", "name": make_extract_tool(model)["name"]},
@@ -93,10 +93,10 @@ class OpenAIClient:
         self._model = model
         self._system_prompt = system_prompt or ""
 
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         response = await self._client.responses.create(
             model=self._model,
-            max_output_tokens=1024,
+            max_output_tokens=max_tokens,
             instructions=self._system_prompt,
             input=prompt,
             tools=[make_responses_tool(model)],
@@ -122,7 +122,7 @@ class OllamaClient:
         self._model = model
         self._system_prompt = system_prompt or ""
 
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         schema = make_ollama_schema(model)
         response = await self._client.chat(
             model=self._model,
@@ -139,6 +139,6 @@ class OllamaClient:
                 },
             ],
             format=schema,
-            options={"temperature": 0, "think": False, "num_ctx": 8192},
+            options={"temperature": 0, "think": False, "num_ctx": 8192, "num_predict": max_tokens},
         )
         return model.model_validate_json(response.message.content)

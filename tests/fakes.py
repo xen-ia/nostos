@@ -29,7 +29,7 @@ class FakeLLM(LLMClient):
         self._email_responses = list(email_responses) if email_responses else []
         self.calls: list[tuple[str, type]] = []
 
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         from src.core.models import (
             Curation,
             DepartureAirports,
