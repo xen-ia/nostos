@@ -97,7 +97,7 @@ async def test_explore_falls_back_to_destination_string_without_resolved(monkeyp
 # --- R2: van stays query that survives ---
 
 async def test_van_query_chain_error_then_alternate_then_generic(monkeypatch):
-    """Mode query errors -> alternate 'campsite' form -> generic retry last."""
+    """Mode query errors -> parallel generic query fills in; single generic retry only if all empty."""
     trip = make_trip(destination="Scozia")
     store = make_store()
     await store.create(trip)
@@ -132,7 +132,7 @@ async def test_van_query_chain_error_then_alternate_then_generic(monkeypatch):
         departure_codes=[])
 
     stays_queries = [q for q in queries if not (q or "").startswith("noleggio camper van")]
-    assert stays_queries == ["campeggio Scozia", "campsite Scozia", "hotels in Scozia"]
+    assert stays_queries == ["campeggio Scozia", "hotels in Scozia"]
     hotels_tc = [tc for tc in tool_calls if tc.get("engine") == "google_hotels"
                  and not tc.get("params", {}).get("rental")]
     assert [tc["params"]["q"] for tc in hotels_tc] == stays_queries

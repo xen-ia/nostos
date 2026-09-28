@@ -59,7 +59,11 @@ def build_period_prompt(trip: TripResponse, intent: TripIntent, today_iso: str) 
     """
 
 
-def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: str) -> str:
+def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: str,
+                        lang: str = "it") -> str:
+    from src.services.tools.language import language_name
+
+    query_lang = language_name(lang)
     return f"""You plan targeted research for this trip. You are given exploration anchors
     (areas, landmark types) discovered for the destination.
 
@@ -78,7 +82,7 @@ def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: s
     USER FREE TEXT (verbatim):
     "{trip.free_text}"
 
-    Propose at most 4 targeted Google-Maps search queries (same language as the destination)
+    Propose at most 4 targeted Google-Maps search queries (in {query_lang})
     that dig INTO the anchors along the brief's interests, style, travel mode and mobility —
     e.g. specific neighborhoods, niche venues, quiet alternatives, van-friendly spots,
     ports for sailing, campsites along routes. Each query must derive from an anchor.
@@ -186,7 +190,8 @@ def build_letter_prompt(free_text: str, intent: TripIntent, places_block: str) -
     I fatti del viaggio (destinazione, date, viaggiatori) vanno tessuti NELLA PROSA:
     mai header burocratici, mai formate tipo 'coppia (2)' — scrivi 'per voi due'.
     Zone evocabili senza link; ogni NOME PROPRIO di locale o struttura deve avere
-    il suo link verificato. Chiusura: invito al passo umano in 1-2 frasi.
+    il suo link verificato. Cita almeno 4 link verificati DISTINTI dalla lista,
+    distribuiti tra i momenti. Chiusura: invito al passo umano in 1-2 frasi.
     VIETATO: elenchi, fasi numerate, prezzi ostentati, filler ('possibile sosta',
     'da inserire', 'pratico', 'una base per', 'coerente con'), aggettivi vuoti da soli
     ('bello', 'incantevole', 'meraviglioso'), frasi su dati mancanti."""

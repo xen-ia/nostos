@@ -44,7 +44,8 @@ logger = logging.getLogger("nostos.orchestrator")
 
 MAX_WINDOWS = 2
 MAX_TARGET_QUERIES = 4
-CORPUS_CAP = 8
+CORPUS_CAP = 24
+MIN_MAPS_RATING = 3.5
 MAX_FLIGHT_PROBES = 12
 MAX_DEPARTURE_AIRPORTS = 4
 MAX_RESOLVED_DESTINATIONS = 2
@@ -195,6 +196,9 @@ class TripOrchestrator:
                 jev_needs_flights = jev_decisions.get("needs_flights")
                 if isinstance(jev_needs_flights, bool):
                     overrides["needs_flights"] = jev_needs_flights
+                jev_budget = jev_decisions.get("budget_sensitive")
+                if isinstance(jev_budget, bool):
+                    overrides["budget_sensitive"] = jev_budget
                 if overrides:
                     search_intent = intent.model_copy(update=overrides)
 
@@ -203,14 +207,15 @@ class TripOrchestrator:
                 resolved, departure_codes = await self._geo_plan(trip, intent)
                 tool_calls: list[dict] = []
                 destination = self._effective_destination(trip, intent, resolved)
-                anchors = await self._explore(destination, tool_calls, resolved=resolved)
-                targeted = await self._target(trip, intent, anchors)
+                lang = self._search_lang(resolved, destination)
+                anchors = await self._explore(destination, tool_calls, resolved=resolved, lang=lang)
+                targeted = await self._target(trip, search_intent, anchors, lang=lang)
                 research = await self._execute_searches(
                     trip, search_intent, targeted, windows, anchors, tool_calls,
-                    resolved=resolved, departure_codes=departure_codes,
+                    resolved=resolved, departure_codes=departure_codes, lang=lang,
                 )
                 if jev_active and tool_calls_jev is not None:
-                    self._apply_jev_scores(research, jev_decisions)
+                    await self._apply_jev_scores(decision_client, trip, research, jev_decisions)
                     research["tool_calls"].append(tool_calls_jev)
 
             async with self._timed("curate+compose"):
@@ -460,16 +465,34 @@ class TripOrchestrator:
                 windows.append(candidate)
         return windows[:3]
 
+    @staticmethod
+    def _search_lang(resolved: ResolvedDestinations | None, destination: str | None) -> str:
+        """SerpAPI hl + query language: Italian at home, French in francophone
+        countries, English everywhere else."""
+        from src.services.tools.language import search_language
+
+        countries = [p.country for p in (resolved.destinations if resolved else []) if p.country]
+        if destination:
+            countries.append(destination)
+        return search_language(countries)
+
     async def _explore(
         self,
         destination: str | None,
         tool_calls: list[dict],
         resolved: ResolvedDestinations | None = None,
+        lang: str = "it",
     ) -> list[dict]:
         """One explore query per resolved destination (never the joined string:
         joining two cities with "e" breaks the search). When the resolved list
         is empty, fall back to the effective destination string. If total
         anchors are still empty, one plain fallback query per destination."""
+        templates = {
+            "fr": ("quartiers et lieux clés à {name}", "choses à voir à {name}"),
+            "en": ("key neighborhoods and places in {name}", "things to see in {name}"),
+        }
+        explore_q, fallback_q = templates.get(lang, ("quartieri e luoghi chiave in {name}",
+                                                     "cose da vedere a {name}"))
         names = [p.name for p in (resolved.destinations if resolved else []) if p.name]
         if not names and destination:
             names = [destination]
@@ -477,9 +500,10 @@ class TripOrchestrator:
             return []
         anchors: list[dict] = []
         for name in names:
-            query = f"quartieri e luoghi chiave in {name}"
+            query = explore_q.format(name=name)
             try:
-                res = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
+                res = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key,
+                                          lang=lang)
             except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
                 logger.warning("google_maps explore: error %s: %s", type(exc).__name__, exc)
                 tool_calls.append({"engine": "google_maps", "params": {"q": query},
@@ -489,10 +513,10 @@ class TripOrchestrator:
             anchors.extend(res)
         if not anchors:
             for name in names:
-                fallback = f"cose da vedere a {name}"
+                fallback = fallback_q.format(name=name)
                 try:
                     res = await maps.research(fallback, timeout=self._serpapi_timeout,
-                                              api_key=self._serpapi_api_key)
+                                              api_key=self._serpapi_api_key, lang=lang)
                 except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
                     logger.warning("google_maps explore fallback: error %s: %s", type(exc).__name__, exc)
                     tool_calls.append({"engine": "google_maps", "params": {"q": fallback},
@@ -502,14 +526,15 @@ class TripOrchestrator:
                 anchors.extend(res)
         return anchors
 
-    async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict]) -> list[str]:
+    async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict],
+                      lang: str = "it") -> list[str]:
         if not anchors:
             return []
         anchors_block = "\n".join(
             f"- {a.get('name')} ({a.get('type')}) {a.get('address') or ''}".strip() for a in anchors[:CORPUS_CAP]
         )
-        plan = await self._llm.extract(build_target_prompt(trip, intent, anchors_block), TargetQueries)
-        return [q.query for q in plan.queries][:MAX_TARGET_QUERIES]
+        plan = await self._llm.extract(build_target_prompt(trip, intent, anchors_block, lang=lang), TargetQueries)
+        return [(q.query, q.based_on) for q in plan.queries][:MAX_TARGET_QUERIES]
 
     def _log_call(self, tool_calls: list[dict], engine: str, params: dict, results: list[dict]) -> None:
         tool_calls.append({"engine": engine, "params": params, "result_count": len(results)})
@@ -552,6 +577,7 @@ class TripOrchestrator:
         tool_calls: list[dict],
         resolved: ResolvedDestinations,
         departure_codes: list[str],
+        lang: str = "it",
     ) -> dict:
         destination = self._effective_destination(trip, intent, resolved)
         errors: list[Exception] = []
@@ -568,11 +594,22 @@ class TripOrchestrator:
             return res
 
         # Targeted queries go to maps verbatim: the model already writes mode-aware queries.
-        maps_results = await asyncio.gather(*(
-            guarded(maps.research(q, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-                    "google_maps", {"q": q})
-            for q in targeted_queries
-        ))
+        # Empty results retry once against the anchor + destination (over-specific
+        # queries in the wrong language are the usual cause, not missing places).
+        async def targeted_search(item: tuple[str, str]) -> list[dict]:
+            query, anchor = item
+            res = await guarded(maps.research(query, timeout=self._serpapi_timeout,
+                                              api_key=self._serpapi_api_key, lang=lang),
+                                "google_maps", {"q": query})
+            if not res and anchor and destination:
+                retry = f"{anchor} {destination}"
+                logger.info("google_maps: empty for targeted query, retrying anchor '%s'", retry)
+                res = await guarded(maps.research(retry, timeout=self._serpapi_timeout,
+                                                  api_key=self._serpapi_api_key, lang=lang),
+                                    "google_maps", {"q": retry})
+            return res
+
+        maps_results = await asyncio.gather(*(targeted_search(t) for t in targeted_queries))
 
         # Flight matrix: the LLM decides per trip (intent.needs_flights); code only executes.
         # Legacy form travel_mode is NOT consulted: a van rented on arrival still needs a flight.
@@ -625,29 +662,38 @@ class TripOrchestrator:
         check_in = trip.start_date or winning_window[0]
         check_out = trip.end_date or winning_window[1]
 
-        # Build targeted places query based on travel_mode and accommodation_style
-        places_query = self._build_places_query(destination, intent, trip)
-        stays = await guarded(
-            places.search(destination=destination, query=places_query, check_in_date=check_in, check_out_date=check_out,
-                          timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-            "google_hotels", {"q": places_query, "check_in_date": check_in, "check_out_date": check_out},
-        )
-        if not stays and destination and places_query == f"campeggio {destination}":
-            logger.info("google_hotels: empty/error for van query, retrying alternate campsite in %s", destination)
-            alt_query = f"campsite {destination}"
-            stays = await guarded(
-                places.search(destination=destination, query=alt_query,
-                              check_in_date=check_in, check_out_date=check_out,
+        # Targeted accommodation: one primary + one generic query per resolved
+        # destination, all in parallel (never the joined "A e B" string: it
+        # dilutes both searches). The generic side doubles as the old fallback.
+        stay_names = [p.name for p in resolved.destinations if p.name]
+        if not stay_names and destination:
+            stay_names = [destination]
+        stay_queries: list[tuple[str, str]] = []
+        for name in stay_names[:2]:
+            primary = self._build_places_query(name, intent, trip)
+            stay_queries.append((name, primary))
+            generic = f"hotels in {name}"
+            if primary != generic:
+                stay_queries.append((name, generic))
+
+        async def _stay_search(args: tuple[str, str]) -> list[dict]:
+            name, q = args
+            return await guarded(
+                places.search(destination=name, query=q,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-                "google_hotels", {"q": alt_query, "check_in_date": check_in,
-                                  "check_out_date": check_out},
+                "google_hotels", {"q": q, "check_in_date": check_in, "check_out_date": check_out},
             )
+
+        stays_lists = await asyncio.gather(*(_stay_search(a) for a in stay_queries))
+        stays = [s for lst in stays_lists for s in lst]
         if not stays:
-            logger.info("google_hotels: empty for mode query, retrying generic hotels in %s", destination)
-            retry_query = f"hotels in {destination}" if destination else "hotels"
+            logger.info("google_hotels: empty for mode queries, retrying generic hotels")
+            retry_query = f"hotels in {stay_names[0]}" if stay_names else "hotels"
             stays = await guarded(
-                places.search(destination=destination, query=retry_query,
-                              check_in_date=check_in, check_out_date=check_out,
+                places.search(destination=stay_names[0] if stay_names else destination,
+                              query=retry_query,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                 "google_hotels", {"q": retry_query, "check_in_date": check_in,
                                   "check_out_date": check_out},
@@ -656,18 +702,33 @@ class TripOrchestrator:
         # Van rental research: one extra places query, van trips only.
         travel_mode = (intent.travel_mode or "").lower()
         accommodation_style = (intent.accommodation_style or "").lower()
-        if destination and (travel_mode == "van_life" or accommodation_style == "van"):
-            rental_query = f"noleggio camper van {destination}"
+        rental_base = stay_names[0] if stay_names else destination
+        if rental_base and (travel_mode == "van_life" or accommodation_style == "van"):
+            rental_query = f"noleggio camper van {rental_base}"
             rentals = await guarded(
-                places.search(destination=destination, query=rental_query,
-                              check_in_date=check_in, check_out_date=check_out,
+                places.search(destination=rental_base, query=rental_query,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                 "google_hotels", {"q": rental_query, "check_in_date": check_in,
                                   "check_out_date": check_out, "rental": True},
             )
             for rental in rentals:
                 rental["rental"] = True
-            stays = [*stays, *rentals]
+                existing = next((s for s in stays if s.get("link") and s.get("link") == rental.get("link")), None)
+                if existing is not None:
+                    existing["rental"] = True
+                else:
+                    stays = [*stays, rental]
+
+        # Budget steering: price-sensitive trips see cheapest stays first —
+        # curation and downstream picks read order as a soft preference.
+        if getattr(intent, "budget_sensitive", False) is True:
+            priced = [s for s in stays if isinstance(s.get("price_per_night_eur"), (int, float))]
+            unpriced = [s for s in stays if not isinstance(s.get("price_per_night_eur"), (int, float))]
+            priced.sort(key=lambda s: s["price_per_night_eur"])
+            if priced:
+                logger.info("stays sorted by price for budget-sensitive trip")
+                stays = [*priced, *unpriced]
 
         maps_items = [*anchors, *(i for lst in maps_results for i in lst)]
         linked_maps = [i for i in maps_items if i.get("link") and not _is_junk_link(i.get("link"))]
@@ -679,6 +740,7 @@ class TripOrchestrator:
             if generated is None:
                 continue
             it["link"] = generated
+            it["_rescued"] = True
             linked_maps.append(it)
             rescued_junk += 1
         if rescued_junk:
@@ -693,6 +755,7 @@ class TripOrchestrator:
                 nameless_drops.append(it.get("name"))
                 continue
             it["link"] = generated
+            it["_rescued"] = True
             linked_maps.append(it)
             rescued += 1
         if rescued:
@@ -700,10 +763,23 @@ class TripOrchestrator:
         if nameless_drops:
             logger.warning("maps corpus: dropped %d link-less entries: %s", len(nameless_drops), nameless_drops)
 
+        # Quality floor: rated-below-threshold POIs never reach curation.
+        floored = [i for i in linked_maps
+                   if not (isinstance(i.get("rating"), (int, float)) and i["rating"] < MIN_MAPS_RATING)]
+        if len(floored) < len(linked_maps):
+            logger.info("maps corpus: floored %d entries below rating %.1f",
+                        len(linked_maps) - len(floored), MIN_MAPS_RATING)
+        # Richness first: rated + described + real-link items win the cap;
+        # rescued (generated-link) entries fill remaining slots.
+        floored.sort(key=lambda i: ((i.get("rating") is not None)
+                                    + bool(i.get("description"))
+                                    + (not i.get("_rescued"))),
+                       reverse=True)
         corpus = {
             "flights": [{k: v for k, v in f.items() if k != "_meta"} for f in flights_list],
-            "maps": dedupe_cap(linked_maps, cap=CORPUS_CAP),
-            "places": stays,
+            "maps": [{k: v for k, v in i.items() if k != "_rescued"}
+                     for i in dedupe_cap(floored, cap=CORPUS_CAP)],
+            "places": dedupe_cap(stays, cap=2 * CORPUS_CAP),
         }
         geo_block = {
             "resolved": [p.model_dump() for p in resolved.destinations],
@@ -731,16 +807,62 @@ class TripOrchestrator:
             "geo": geo_block,
         }
 
-    @staticmethod
-    def _apply_jev_scores(research: dict, decisions: dict) -> None:
-        """Re-rank corpus flights/POIs with T3 scoring before _curate. The scores
-        map is empty (no per-item Jev scores yet): defaults keep order stable while
-        budget_sensitive already drives price weighting. Never invents links."""
+    #: Max candidates scored per Jev call (one parallel call covers the batch).
+    JEV_SCORE_BATCH = 20
+
+    async def _score_candidates(self, client, state: dict, items: list[dict]) -> dict[str, float]:
+        """One parallel Jev call scoring fit per candidate (noul each). Any
+        failure returns {} and callers fall back to neutral scores."""
+        batch = [it for it in items if it.get("link")][: self.JEV_SCORE_BATCH]
+        if not batch:
+            return {}
+        questions = {}
+        for i, it in enumerate(batch):
+            name = (it.get("name") or "unnamed").strip()
+            kind = (it.get("type") or "place").strip()
+            extra = f", rated {it['rating']}" if it.get("rating") else ""
+            questions[f"fit_{i}"] = {
+                "type": "noul",
+                "instructions": (f"Is this a good fit for the traveler's brief? "
+                                 f"{name} ({kind}{extra}). Answer yes only on clear fit."),
+            }
+        try:
+            raw = await client.decide(state, questions)
+        except Exception as exc:  # noqa: BLE001 — scoring must never abort the trip
+            logger.warning("jev scoring failed, neutral scores: %s", type(exc).__name__)
+            return {}
+        answers = raw.get("answers", {}) if isinstance(raw, dict) else {}
+        scores: dict[str, float] = {}
+        for i, it in enumerate(batch):
+            link = it.get("link") or ""
+            if not link:
+                continue
+            item = answers.get(f"fit_{i}", {})
+            p = item.get("noul", 0.5) if isinstance(item, dict) else 0.5
+            try:
+                p = float(p)
+            except (TypeError, ValueError):
+                p = 0.5
+            scores[link] = max(0.0, min(1.0, p))
+        return scores
+
+    async def _apply_jev_scores(self, client, trip: TripResponse, research: dict, decisions: dict) -> None:
+        """Re-rank corpus flights/POIs with real Jev fit scores before _curate.
+        Without a client (or on any error) scores stay neutral and order is
+        stable while budget_sensitive still drives price weighting."""
         budget_sensitive = decisions.get("budget_sensitive")
         if not isinstance(budget_sensitive, bool):
             budget_sensitive = False
         scores: dict[str, float] = {}
         corpus = research.get("corpus", {})
+        if client is not None:
+            from src.core.decision_router import build_router_state
+
+            state = build_router_state(trip)
+            maps_scores = await self._score_candidates(client, state, corpus.get("maps", []) or [])
+            stays_scores = await self._score_candidates(client, state, corpus.get("places", []) or [])
+            scores = {**maps_scores, **stays_scores}
+            research["tool_calls"].append({"engine": "jev-scorer", "scored": len(scores)})
         flights_list = corpus.get("flights", []) or []
         if flights_list:
             best = pick_best_flight(flights_list, scores, budget_sensitive)
@@ -749,6 +871,9 @@ class TripOrchestrator:
         maps_items = corpus.get("maps", []) or []
         if maps_items:
             corpus["maps"] = pick_top_pois(maps_items, scores, limit=len(maps_items))
+
+    #: Min distinct verified links cited across moments (richness retry below).
+    MIN_CITED_LINKS = 4
 
     #: Re-probe the winning flight combo once before compose: if the price moved
     #: up more than this fraction (or the link is gone), fall back to the next
@@ -957,6 +1082,20 @@ class TripOrchestrator:
         content["moments"] = moments
         if len(moments) < 2:
             raise NoResourcesError("letter has fewer than 2 valid moments: email not sent")
+        # Link richness: cite at least MIN_CITED_LINKS distinct verified links when
+        # the research offers them — otherwise the dream reads rich but links thin.
+        cited = {link for m in moments for link in m.get("place_links", []) if link in allowed_links}
+        if len(cited) < self.MIN_CITED_LINKS and len(allowed_links) >= self.MIN_CITED_LINKS:
+            logger.info("letter retry: only %d distinct links cited, one richness retry", len(cited))
+            retry = (await self._llm.extract(
+                prompt + "\n\nIMPORTANT: cita almeno 4 link verificati DISTINTI dalla lista, "
+                         "distribuiti tra i momenti. Non ripetere lo stesso link.",
+                LetterContent, max_tokens=4096)).model_dump()
+            rich = [m for m in retry.get("moments", []) if _moment_ok(m)]
+            rich_cited = {link for m in rich for link in m.get("place_links", []) if link in allowed_links}
+            if len(rich) >= 2 and len(rich_cited) > len(cited):
+                content, moments = retry, rich
+                content["moments"] = moments
         # Deterministic grounding lists from curated research (never LLM prose).
         content["resources"] = self._dream_resources(curated)
         content["places"] = self._letter_places(curated, moments)

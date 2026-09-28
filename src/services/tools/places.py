@@ -32,6 +32,7 @@ async def search(
     query: Optional[str] = None,
     timeout: float = 60.0,
     api_key: str | None = None,
+    lang: str = "it",
 ) -> list[dict]:
     """Searches accommodations on Google Hotels via SerpAPI."""
     if not destination:
@@ -48,7 +49,7 @@ async def search(
             "q": query,
             "check_in_date": check_in,
             "check_out_date": check_out,
-            "hl": "it",
+            "hl": lang or "it",
             "gl": "it",
             "currency": "EUR",
         },

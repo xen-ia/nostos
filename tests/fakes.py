@@ -48,18 +48,6 @@ class FakeLLM(LLMClient):
             return self._letter_responses.pop(0)
         if model in self._responses:
             return self._responses[model]
-        if model is TripIntent:
-            return self._response
-        if model is PeriodPlan:
-            return PeriodPlan(windows=[])
-        if model is TargetQueries:
-            return TargetQueries(queries=[])
-        if model is Curation:
-            return Curation(flight_indices=[0, 1, 2], poi_indices=[0, 1, 2], stay_indices=[0, 1, 2])
-        if model is ResolvedDestinations:
-            return ResolvedDestinations(destinations=[], rationale="")
-        if model is DepartureAirports:
-            return DepartureAirports(codes=[])
         if model is LetterContent:
             return LetterContent(
                 subject="Il tuo viaggio a Tokyo",
@@ -72,6 +60,20 @@ class FakeLLM(LLMClient):
                 ],
                 closing="Ne parliamo insieme.",
             )
+        if model in self._responses:
+            return self._responses[model]
+        if model is TripIntent:
+            return self._response
+        if model is PeriodPlan:
+            return PeriodPlan(windows=[])
+        if model is TargetQueries:
+            return TargetQueries(queries=[])
+        if model is Curation:
+            return Curation(flight_indices=[0, 1, 2], poi_indices=[0, 1, 2], stay_indices=[0, 1, 2])
+        if model is ResolvedDestinations:
+            return ResolvedDestinations(destinations=[], rationale="")
+        if model is DepartureAirports:
+            return DepartureAirports(codes=[])
         return self._response
 
 

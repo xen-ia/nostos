@@ -97,7 +97,7 @@ async def test_region_trip_resolves_destination_and_logs_rationale(monkeypatch):
     await _run(trip, llm, db)
 
     assert any("Santa Lucia" in q for q in explore_queries), "explore must target resolved names"
-    assert place_queries[-1] == "hotels in Santa Lucia e Dominicus"
+    assert place_queries[-1] == "hotels in Dominicus"
 
     assert flight_args, "resolved arrival codes must enable probes"
     assert {a[0] for a in flight_args} == {"MXP", "FCO"}
@@ -124,7 +124,7 @@ async def test_stay_preference_steers_places_query(monkeypatch):
     _patch_searches(monkeypatch, places_fn=fake_places)
     await _run(trip, _make_llm(), FakeDatabase())
 
-    assert place_queries[-1] == "agriturismo stays in Caraibi"
+    assert place_queries == ["agriturismo stays in Caraibi", "hotels in Caraibi"]
 
 
 # --- Flight decision: the LLM decides per trip (needs_flights), code only executes ---

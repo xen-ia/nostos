@@ -71,6 +71,10 @@ class TripIntent(BaseModel):
             "Nel dubbio con paesi diversi → True."
         ),
     )
+    budget_sensitive: bool = Field(
+        default=False,
+        description="True se il budget è esplicitamente ristretto (limitato, max, economico)",
+    )
     flight_rationale: str = Field(
         default="",
         description="In italiano: perché i voli servono oppure no per questo viaggio",
