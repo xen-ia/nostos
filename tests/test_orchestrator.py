@@ -403,7 +403,7 @@ async def test_curation_indices_out_of_range_are_dropped(monkeypatch):
     assert len(db.saved[0]["package"]["curated"]["maps"]) == 1
 
 
-# --- Validation gate: grounding of dream scenes against the curated corpus ---
+# --- Validation gate: grounding of letter moments against the curated corpus ---
 
 
 async def _run_with_searches(monkeypatch, llm, email, db, trip, store):
@@ -426,48 +426,46 @@ async def _run_with_searches(monkeypatch, llm, email, db, trip, store):
     await _run(orchestrator)
 
 
-async def test_compose_dream_uses_large_token_budget(monkeypatch):
-    """Dream scenes are long prose: compose must request headroom, or long
-    dreams truncate (prod ValidationError, trip ERROR)."""
-    from src.core.models import DreamContent
+async def test_compose_letter_uses_large_token_budget(monkeypatch):
+    """Letter moments are prose: compose must request headroom, or long
+    letters truncate (prod ValidationError, trip ERROR)."""
+    from src.core.models import LetterContent
 
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, dream_responses=[DreamContent(
-        subject="Tokyo", arrival="Atterri a Tokyo di sera, il vento sa di sale.",
-        scenes=[
-            {"title": "Senso-ji",
-             "prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
+    llm = FakeLLM(response=INTENT, letter_responses=[LetterContent(
+        subject="Tokyo", opening="Atterri a Tokyo di sera, il vento sa di sale.",
+        moments=[
+            {"prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
              "place_links": ["https://example.com/poi"]},
-            {"title": "Ryokan",
-             "prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
+            {"prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
              "place_links": ["https://example.com/hotel"]},
-        ])])
+        ],
+        closing="Ne parliamo insieme.")])
     email = FakeEmailSender()
     db = FakeDatabase()
 
     await _run_with_searches(monkeypatch, llm, email, db, trip, store)
 
-    budgets = [kw["max_tokens"] for kw in llm.calls_kwargs if kw["model"] is DreamContent]
-    assert budgets, "compose must call extract for DreamContent"
+    budgets = [kw["max_tokens"] for kw in llm.calls_kwargs if kw["model"] is LetterContent]
+    assert budgets, "compose must call extract for LetterContent"
     assert all(b >= 2048 for b in budgets)
 
 
-async def test_compose_dream_all_scenes_invalid_aborts_without_email(monkeypatch):
-    from src.core.models import DreamContent
+async def test_compose_letter_all_moments_invalid_aborts_without_email(monkeypatch):
+    from src.core.models import LetterContent
 
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, responses={DreamContent: DreamContent(
-        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
-        scenes=[
-            {"title": "Costa sud",
-             "prose": "Una possibile sosta per il van lungo il percorso.",
+    llm = FakeLLM(response=INTENT, responses={LetterContent: LetterContent(
+        subject="Creta", opening="Atterri a Heraklion di sera, il vento sa di sale.",
+        moments=[
+            {"prose": "Una possibile sosta per il van lungo il percorso.",
              "place_links": ["https://example.com/poi"]},
-            {"title": "Castello Fantasma",
-             "prose": "le mura antiche trattengono il calore del giorno tra pietre chiare e il vento leggero della sera",
+            {"prose": "le mura antiche trattengono il calore del giorno tra pietre chiare e il vento leggero della sera",
              "place_links": ["https://fake.example/castello"]},
-        ])})
+        ],
+        closing="Ne parliamo insieme.")})
     email = FakeEmailSender()
     db = FakeDatabase()
 
@@ -477,8 +475,8 @@ async def test_compose_dream_all_scenes_invalid_aborts_without_email(monkeypatch
     assert db.saved == []
     got = await store.get(trip.id)
     assert got.status == TripStatus.ERROR
-    assert "fewer than 2 valid scenes" in (got.result or "")
-    assert len([p for p, m in llm.calls if m is DreamContent]) == 2
+    assert "fewer than 2 valid moments" in (got.result or "")
+    assert len([p for p, m in llm.calls if m is LetterContent]) == 2
 
 
 import pytest
@@ -805,36 +803,38 @@ async def test_decide_http_error_raises_jev_error():
             await client.close()
 
 
-async def test_compose_dream_validates_links_and_gates_filler(monkeypatch, caplog):
+async def test_compose_letter_validates_links_and_gates_filler(monkeypatch, caplog):
     import logging
 
-    from src.core.models import DreamContent
+    from src.core.models import LetterContent
     store = make_store()
     trip = await store.create(make_trip())
-    dream_first = DreamContent(
-        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
-        scenes=[
-            {"title": "Festo", "prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
+    letter_first = LetterContent(
+        subject="Creta", opening="Atterri a Heraklion di sera, il vento sa di sale.",
+        moments=[
+            {"prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
              "place_links": ["https://example.com/poi"]},
-            {"title": "Costa sud", "prose": "Una possibile sosta per il van lungo il percorso.",
+            {"prose": "Una possibile sosta per il van lungo il percorso.",
              "place_links": ["https://example.com/poi"]},
-        ])
-    dream_retry = DreamContent(
-        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
-        scenes=[
-            {"title": "Festo", "prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
+        ],
+        closing="Ne parliamo insieme.")
+    letter_retry = LetterContent(
+        subject="Creta", opening="Atterri a Heraklion di sera, il vento sa di sale.",
+        moments=[
+            {"prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
              "place_links": ["https://example.com/poi"]},
-            {"title": "Chania", "prose": "Nel porto vecchio le lampare rientrano all'alba e la bougatsa calda sa di cannella e crema.",
+            {"prose": "Nel porto vecchio le lampare rientrano all'alba e la bougatsa calda sa di cannella e crema.",
              "place_links": ["https://example.com/hotel"]},
-        ])
-    llm = FakeLLM(response=INTENT, dream_responses=[dream_first, dream_retry])
+        ],
+        closing="Ne parliamo insieme.")
+    llm = FakeLLM(response=INTENT, letter_responses=[letter_first, letter_retry])
     email = FakeEmailSender()
     db = FakeDatabase()
     with caplog.at_level(logging.INFO, logger="nostos.orchestrator"):
         await _run_with_searches(monkeypatch, llm, email, db, trip, store)
     assert len(email.sent) == 1
-    assert "Festo" in email.sent[0]["body"]
+    assert "pietre minoiche" in email.sent[0]["body"]
     assert "https://example.com/poi" in email.sent[0]["body"]
-    assert len([p for p, m in llm.calls if m is DreamContent]) == 2
-    assert any("dream retry:" in r.getMessage() for r in caplog.records), \
-        "a rejected scene must log the specificity retry"
+    assert len([p for p, m in llm.calls if m is LetterContent]) == 2
+    assert any("letter retry:" in r.getMessage() for r in caplog.records), \
+        "a rejected moment must log the specificity retry"

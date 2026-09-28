@@ -1,4 +1,4 @@
-"""LLM tool-call extraction schemas: TripIntent and dream-proposal content."""
+"""LLM tool-call extraction schemas: TripIntent and letter content."""
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -75,19 +75,6 @@ class TripIntent(BaseModel):
         default="",
         description="In italiano: perché i voli servono oppure no per questo viaggio",
     )
-
-
-class DreamScene(BaseModel):
-    title: str = Field(description="Titolo evocativo della scena, es. 'Heraklion di sera'")
-    prose: str = Field(description="3-5 frasi sensoriali: luce, cibo, suoni, materia. Mai filler")
-    place_links: list[str] = Field(default_factory=list, description="URL verificati citati nella scena")
-
-
-class DreamContent(BaseModel):
-    subject: str = Field(description="Oggetto breve e personale")
-    arrival: str = Field(description="Atto I: scena d'apertura sensoriale, 2-3 frasi")
-    scenes: list[DreamScene] = Field(description="Atto II: 2 o 3 scene")
-    logistics: str = Field(default="", description="Volo+prezzi in una riga sobria, o vuoto")
 
 
 class LetterMoment(BaseModel):

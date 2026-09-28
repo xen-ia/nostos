@@ -7,7 +7,7 @@ from src.core.prompts import build_curation_prompt
 from src.services.apis.email import SITE_URL, build_html_email
 from tests.fakes import make_trip
 
-BASE = {"opening": "O.", "understanding": "U.", "resources": [], "cta": "C.",
+BASE = {"opening": "O.", "resources": [], "cta": "C.",
         "honest_note": "N.", "sections_map": {}, "appendix": {"groups": [], "source_links": []}}
 
 
@@ -38,31 +38,31 @@ def test_cta_targets_min_44px():
     assert cta_pads and min(cta_pads) >= 14  # 14px vertical padding ≈ 44px target with 16px text
 
 
-SCENE_CONTENT = {**BASE,
-                 "arrival": "Atterri la sera.",
-                 "resources": [{"name": "Hotel X", "description": "",
-                                "price": "100 EUR", "link": "https://h.example/x"},
-                               {"name": "Taverna Y", "description": "",
-                                "price": "", "link": "https://y.example/t"}],
-                 "sections_map": {"maps": ["https://h.example/x", "https://y.example/t"]},
-                 "scenes": [
-                     {"title": "Sera", "prose": "Luci calde e sale.",
-                      "place_links": ["https://h.example/x"]},
-                     {"title": "Mattina", "prose": "Cucina vera e mare.",
-                      "place_links": ["https://y.example/t"]},
-                 ]}
+MOMENT_CONTENT = {**BASE,
+                  "opening": "Sbarchi la sera.",
+                  "resources": [{"name": "Hotel X", "description": "",
+                                 "price": "100 EUR", "link": "https://h.example/x"},
+                                {"name": "Taverna Y", "description": "",
+                                 "price": "", "link": "https://y.example/t"}],
+                  "sections_map": {"maps": ["https://h.example/x", "https://y.example/t"]},
+                  "moments": [
+                      {"prose": "Luci calde e sale.",
+                       "place_links": ["https://h.example/x"]},
+                      {"prose": "Cucina vera e mare.",
+                       "place_links": ["https://y.example/t"]},
+                  ]}
 
 
-def test_scenes_use_sibling_anchors_no_nesting():
-    content = {**SCENE_CONTENT, "feedback_link": "https://x.example/f"}
+def test_moments_use_sibling_anchors_no_nesting():
+    content = {**MOMENT_CONTENT, "feedback_link": "https://x.example/f"}
     html = build_html_email(content)
     # No anchor may contain another anchor anywhere in the email.
     assert not re.search(r"<a\b[^>]*>(?:(?!</a>).)*<a\b", html, re.S | re.I)
-    # Each scene exposes exactly one action link (titles are plain text, no boxes).
-    assert html.count('href="https://h.example/x"') == 1  # scene one only
-    assert html.count('href="https://y.example/t"') == 1  # scene two only
-    assert "Taverna Y" not in html  # resource names never render, only scene prose
-    assert "Sera" in html and "Vedi →" in html
+    # Each moment exposes exactly one action link (prose is plain text, no boxes).
+    assert html.count('href="https://h.example/x"') == 1  # moment one only
+    assert html.count('href="https://y.example/t"') == 1  # moment two only
+    assert "Taverna Y" not in html  # resource names never render, only moment prose
+    assert "Luci calde" in html and "Vedi →" in html
     assert '<table class="card-frame"' not in html
 
 
@@ -98,7 +98,7 @@ def test_cta_copy_is_one_way():
     assert "rispondi" not in html.lower()
 
 
-def test_scene_renders_prose_with_single_vedi_link():
+def test_moment_renders_prose_with_single_vedi_link():
     link = "https://flights.example/abc"
     maps_link = "https://maps.example/taverna"
     content = {
@@ -108,20 +108,23 @@ def test_scene_renders_prose_with_single_vedi_link():
                       {"name": "Taverna X", "description": "",
                        "price": "", "link": maps_link}],
         "sections_map": {"flights": [link], "maps": [maps_link]},
-        "scenes": [{"title": "Sera in taverna", "prose": "Cucina vera e mare calmo.",
+        "moments": [{"prose": "Cucina vera e mare calmo.",
                     "place_links": [maps_link]}],
+        "places": [{"name": "Volo easyJet · Milano – Inverness", "price": "196 EUR", "link": link},
+                   {"name": "Taverna X", "price": "", "link": maps_link}],
     }
     html = build_html_email(content)
-    assert "Sera in taverna" in html and "Cucina vera" in html  # scene renders
+    assert "Cucina vera" in html  # moment renders
     assert "Come arrivare" not in html  # no arrival hero block anymore
-    assert "Volo:" in html and "196 EUR" in html  # logistics strip carries the flight
+    assert "I luoghi" in html and "196 EUR" in html  # places list carries flight + price
     assert '<table class="card-frame"' not in html  # flight never a grouped card
-    assert html.count(f'href="{maps_link}"') == 1  # single Vedi link
+    assert html.count(f'href="{maps_link}"') == 2  # moment Vedi + places list vedi
+    assert html.count(f'href="{link}"') == 1  # places list only
     cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
     assert all(link not in card for card in cards)
 
 
-def test_flight_links_live_only_in_logistics_strip():
+def test_flight_links_live_only_in_places_list():
     hero = "https://flights.example/hero"
     other = "https://flights.example/other"
     content = {
@@ -133,36 +136,36 @@ def test_flight_links_live_only_in_logistics_strip():
              "link": other},
         ],
         "sections_map": {"flights": [hero, other]},
-        "scenes": [{"title": "Sera", "prose": "Luci calde e sale.", "place_links": []}],
+        "moments": [{"prose": "Luci calde e sale.", "place_links": []}],
+        "places": [{"name": "Volo easyJet · Milano – Inverness", "price": "", "link": hero},
+                   {"name": "Volo Ryanair · Bergamo – Edimburgo", "price": "", "link": other}],
     }
     html = build_html_email(content)
-    assert "L'itinerario" not in html  # phases gone with the acts template
+    assert "L'itinerario" not in html  # phases gone with the letter template
     assert other in html
-    assert html.count(f'href="{hero}"') == 1  # logistics strip only, never a stop
+    assert html.count(f'href="{hero}"') == 1  # places list only, never a stop
     assert '<table class="card-frame"' not in html  # no box grid anymore
 
 
 def test_raw_flight_name_humanized_and_price_deduped():
+    from src.services.apis.email import _render_card
     hero = "https://flights.example/hero"
     other = "https://flights.example/other"
-    content = {
-        **BASE,
-        "resources": [
-            {"name": "easyJet, MXP -> INV, departure 2026-12-21 10:35, 196 EUR",
-             "description": "Partenza 2026-12-21, 196 EUR tutto incluso",
-             "price": "196 EUR", "link": hero},
-            {"name": "Ryanair, BGY -> EDI, departure 2026-12-21 07:00, 250 EUR",
-             "description": "Alba a Edimburgo, 250 EUR con bagaglio",
-             "price": "250 EUR", "link": other},
-        ],
-        "sections_map": {"flights": [hero, other]},
-    }
-    html = build_html_email(content)
-    assert "departure 2026-12-21" not in html
-    assert "easyJet · MXP – INV" in html
-    assert "Ryanair · BGY – EDI" in html
-    assert html.count("196 EUR") == 1  # price pill only, description duplicate stripped
-    assert html.count("250 EUR") == 1
+    hero_html = _render_card(
+        {"name": "easyJet, MXP -> INV, departure 2026-12-21 10:35, 196 EUR",
+         "description": "Partenza 2026-12-21, 196 EUR tutto incluso",
+         "price": "196 EUR", "link": hero},
+        is_flight=True)
+    assert "departure 2026-12-21" not in hero_html
+    assert "easyJet · MXP – INV" in hero_html
+    assert hero_html.count("196 EUR") == 1  # price pill only, description duplicate stripped
+    other_html = _render_card(
+        {"name": "Ryanair, BGY -> EDI, departure 2026-12-21 07:00, 250 EUR",
+         "description": "Alba a Edimburgo, 250 EUR con bagaglio",
+         "price": "250 EUR", "link": other},
+        is_flight=True)
+    assert "Ryanair · BGY – EDI" in other_html
+    assert other_html.count("250 EUR") == 1
 
 
 def test_footer_url_single_occurrence():

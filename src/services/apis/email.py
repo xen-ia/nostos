@@ -246,57 +246,6 @@ def _render_places_list(places: list[dict]) -> str:
             'font-weight:600;color:#221D0F;margin-top:22px;">I luoghi</div>' + "".join(rows))
 
 
-def _render_arrival(arrival: str) -> str:
-    if not (arrival or "").strip():
-        return ""
-    return (f'<div class="d-lead lead" style="font-family:\'Fraunces\',Georgia,serif;font-size:19px;'
-            f'font-weight:500;font-style:italic;line-height:1.55;color:#221D0F;">{_e(arrival.strip())}</div>')
-
-
-def _render_scenes(scenes: list[dict], cards_by_link: dict[str, dict]) -> str:
-    blocks = []
-    for scene in scenes or []:
-        title, prose = (scene.get("title") or "").strip(), (scene.get("prose") or "").strip()
-        if not title and not prose:
-            continue
-        links = "".join(
-            f'<div style="margin-top:6px;"><a href="{_e(link)}" target="_blank" '
-            f'style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,'
-            f'Arial,sans-serif;font-size:13px;font-weight:600;color:#A84E28;'
-            f'text-decoration:underline;">Vedi →</a></div>'
-            for link in scene.get("place_links", []) if link in cards_by_link)
-        blocks.append(
-            f'<div class="d-name" style="font-family:\'Fraunces\',Georgia,serif;font-size:18px;'
-            f'font-weight:600;color:#221D0F;line-height:1.4;margin-top:18px;">{_e(title)}</div>'
-            f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
-            f'Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#3B4956;'
-            f'margin-top:8px;">{_e(prose)}</div>' + links)
-    return "".join(blocks)
-
-
-def _render_logistics(flights: list[dict]) -> str:
-    """Slim muted strip: every curated flight as facts. Absent when none."""
-    shown = [f for f in flights or [] if f.get("link")]
-    if not shown:
-        return ""
-    rows = []
-    for flight in shown:
-        name = _humanize_flight_name(flight.get("name") or "Volo")
-        name = re.sub(r"^Volo\s+", "", name)
-        facts = " · ".join(p for p in [name, flight.get("price")] if p)
-        rows.append(
-            f'{_e(facts)} <a href="{_e(flight["link"])}" target="_blank" '
-            f'style="color:#A84E28;font-weight:600;text-decoration:underline;">Vedi il volo →</a>'
-        )
-    items = "<br>".join(rows)
-    return (
-        '<div class="d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
-        'Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#4E6071;'
-        'margin-top:24px;padding-top:16px;border-top:1px solid #D0DDE9;">'
-        f"Volo: {items}</div>"
-    )
-
-
 _IT_MONTHS = ("gen", "feb", "mar", "apr", "mag", "giu",
               "lug", "ago", "set", "ott", "nov", "dic")
 

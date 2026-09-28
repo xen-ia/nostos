@@ -21,11 +21,11 @@ class FakeLLM(LLMClient):
 
     def __init__(self, response=None, error: Exception | None = None,
                  responses: dict[type, BaseModel] | None = None,
-                 dream_responses: list[BaseModel] | None = None):
+                 letter_responses: list[BaseModel] | None = None):
         self._response = response
         self._error = error
         self._responses = responses or {}
-        self._dream_responses = list(dream_responses) if dream_responses else []
+        self._letter_responses = list(letter_responses) if letter_responses else []
         self.calls: list[tuple[str, type]] = []
         self.calls_kwargs: list[dict] = []
 
@@ -33,7 +33,7 @@ class FakeLLM(LLMClient):
         from src.core.models import (
             Curation,
             DepartureAirports,
-            DreamContent,
+            LetterContent,
             PeriodPlan,
             ResolvedDestinations,
             TargetQueries,
@@ -44,8 +44,8 @@ class FakeLLM(LLMClient):
         self.calls_kwargs.append({"model": model, "max_tokens": max_tokens})
         if self._error is not None:
             raise self._error
-        if model is DreamContent and self._dream_responses:
-            return self._dream_responses.pop(0)
+        if model is LetterContent and self._letter_responses:
+            return self._letter_responses.pop(0)
         if model in self._responses:
             return self._responses[model]
         if model is TripIntent:
@@ -60,18 +60,17 @@ class FakeLLM(LLMClient):
             return ResolvedDestinations(destinations=[], rationale="")
         if model is DepartureAirports:
             return DepartureAirports(codes=[])
-        if model is DreamContent:
-            return DreamContent(
+        if model is LetterContent:
+            return LetterContent(
                 subject="Il tuo viaggio a Tokyo",
-                arrival="Atterri a Tokyo di sera, il vento sa di sale.",
-                scenes=[
-                    {"title": "Senso-ji",
-                     "prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
+                opening="Atterri a Tokyo di sera, il vento sa di sale.",
+                moments=[
+                    {"prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
                      "place_links": ["https://example.com/poi"]},
-                    {"title": "Ryokan",
-                     "prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
+                    {"prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
                      "place_links": ["https://example.com/hotel"]},
                 ],
+                closing="Ne parliamo insieme.",
             )
         return self._response
 

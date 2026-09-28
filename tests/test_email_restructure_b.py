@@ -57,24 +57,35 @@ def test_humanize_normalizes_arrows_in_titles():
 
 
 def test_no_arrows_in_rendered_flight_names():
-    hero = "https://flights.example/hero"
+    """Letter grounding: _letter_places builds elegant flight names from curated
+    data; the places list renders each with a single link, no arrows."""
+    from src.core.orchestrator import TripOrchestrator
+    curated = {
+        "flights": [
+            {"airline": "easyJet", "from": "MXP", "to": "INV",
+             "departure_date": "2026-12-21", "price_eur": 196,
+             "link": "https://flights.example/hero"},
+            {"airline": "Ryanair", "from": "Bergamo", "to": "Edimburgo",
+             "departure_date": "2026-12-21", "price_eur": 250,
+             "link": "https://flights.example/other"},
+        ],
+        "maps": [], "places": [],
+    }
+    places = TripOrchestrator._letter_places(curated, moments=[])
     content = {
         **BASE,
-        "resources": [
-            {"name": "easyJet, MXP -> INV, departure 2026-12-21 10:35, 196 EUR",
-             "description": "Diretto", "price": "196 EUR", "link": hero},
-            {"name": "Volo Ryanair Bergamo → Edimburgo",
-             "description": "", "price": "", "link": "https://flights.example/other"},
-        ],
-        "sections_map": {"flights": [hero, "https://flights.example/other"]},
+        "resources": TripOrchestrator._dream_resources(curated),
+        "sections_map": {"flights": [f["link"] for f in curated["flights"]]},
+        "moments": [{"prose": "Luci calde e sale.", "place_links": []}],
+        "places": places,
     }
     html = build_html_email(content)
-    assert "easyJet · MXP – INV" in html  # hero logistics, humanized, no doubled Volo
-    assert "Ryanair Bergamo – Edimburgo" in html  # second flight logistics
+    assert "easyJet · MXP – INV" in html  # places list, humanized, no doubled Volo
+    assert "Ryanair · Bergamo – Edimburgo" in html
     body = html.split("</head>", 1)[-1]
     assert "MXP ->" not in body and "Bergamo →" not in body
     assert "departure 2026-12-21" not in body
-    assert html.count(f'href="{hero}"') == 1
+    assert html.count('href="https://flights.example/hero"') == 1
     assert html.count('href="https://flights.example/other"') == 1
 
 
@@ -143,17 +154,17 @@ def test_validate_resources_covers_rental_tagged_places():
 
 def test_body_text_mirrors_rental_section():
     content = _van_content([_hotel(), _rental("https://rent.example/a")])
-    content["arrival"] = "Atterri la sera."
-    content["scenes"] = [
-        {"title": "Sera", "prose": "Luci calde e sale.", "place_links": []},
+    content["opening"] = "Sbarchi la sera."
+    content["moments"] = [
+        {"prose": "Luci calde e sale.", "place_links": []},
     ]
     text = TripOrchestrator._compose_body_text(content)
     assert "Dove noleggiare il van:" in text
-    assert text.index("Sera") < text.index("Dove noleggiare il van:")
+    assert text.index("Luci calde e sale.") < text.index("Dove noleggiare il van:")
     after = text.split("Dove noleggiare il van:", 1)[-1]
     assert "https://rent.example/a" in after
     assert "Van Rent X" in after and "80 EUR" in after
-    assert "L'itinerario:" not in text  # phases gone with the acts template
+    assert "L'itinerario:" not in text  # phases gone with the letter template
 
 
 # --- B5: appendix only-backed ---

@@ -384,9 +384,9 @@ class TripOrchestrator:
                 lines.append("Fonti:")
                 lines.extend(urls)
         lines.append("")
-        lines.append(email_content.get("closing") or email_content["cta"])
+        lines.append(email_content.get("closing") or email_content.get("cta") or "")
         lines.append("")
-        lines.append(email_content["honest_note"])
+        lines.append(email_content.get("honest_note") or "")
         lines.append("")
         lines.append(SIGNATURE_GREETING)
         lines.append(SIGNATURE_NAME)
@@ -1002,100 +1002,6 @@ class TripOrchestrator:
         }
         return content, body_text, body_html, package
 
-    async def _compose_dream(
-        self, trip: TripResponse, intent: TripIntent, research: dict
-    ) -> tuple[dict, str, str, dict]:
-        from src.core.dream import find_new_proper_nouns, is_generic_scene
-        from src.core.models import DreamContent
-        from src.core.prompts import build_dream_prompt
-
-        corpus, curated = research["corpus"], research["curated"]
-        allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
-        allowed_links = set(allowed.links)
-        known_names = [r.get("name") or "" for r in
-                       (curated["flights"] + curated["maps"] + curated["places"])]
-        days = 0
-        try:
-            from datetime import date
-            days = (date.fromisoformat(trip.end_date) - date.fromisoformat(trip.start_date)).days + 1
-        except (TypeError, ValueError):
-            days = 0
-        prompt = build_dream_prompt(trip.free_text or "", intent,
-                                    self._render_flights(curated["flights"], numbered=True),
-                                    self._render_maps(curated["maps"], numbered=True),
-                                    self._render_places(curated["places"], numbered=True), days)
-        content = (await self._llm.extract(prompt, DreamContent, max_tokens=4096)).model_dump()
-
-        def _scene_ok(scene: dict) -> bool:
-            if not scene.get("title") or is_generic_scene(scene.get("prose", "")):
-                return False
-            if any(link not in allowed_links for link in scene.get("place_links", [])):
-                return False
-            if find_new_proper_nouns(scene.get("prose", ""), known_names):
-                return False
-            return True
-
-        scenes = [s for s in content.get("scenes", []) if _scene_ok(s)]
-        if len(scenes) < len(content.get("scenes", [])):
-            logger.info("dream retry: %d scenes rejected, one specificity retry",
-                        len(content.get("scenes", [])) - len(scenes))
-            retry = (await self._llm.extract(
-                prompt + "\n\nIMPORTANT: alcune scene erano generiche o citavano luoghi senza link. "
-                         "Riscrivi ogni scena con dettagli sensoriali concreti e link solo verificati.",
-                DreamContent, max_tokens=4096)).model_dump()
-            scenes = [s for s in retry.get("scenes", []) if _scene_ok(s)]
-            if scenes:
-                content = retry
-        content["scenes"] = scenes
-        if len(scenes) < 2:
-            raise NoResourcesError("dream has fewer than 2 valid scenes: email not sent")
-        # Deterministic grounding list from curated research (never LLM prose):
-        # without it the dream path renders no links (empty cards_by_link) and
-        # the twin diverges from the HTML.
-        content["resources"] = self._dream_resources(curated)
-        content["honest_note"] = HONEST_NOTE
-        content["cta"] = CTA
-        content["draft_note"] = DRAFT_NOTE
-        content["trip_summary"] = format_trip_summary(
-            trip.destination, trip.start_date, trip.end_date,
-            trip.travelers_count, trip.travelers_type,
-        )
-        from src.core.feedback_token import make_token
-        from src.settings import get_settings
-
-        settings = get_settings()
-        base = getattr(settings, "feedback_base_url", "https://xen-ia.github.io/nostos")
-        token = make_token(self._trip_id, settings.api_token or "dev-secret", ttl_days=settings.feedback_token_ttl_days)
-        content["feedback_link"] = f"{base}/feedback.html?trip_id={self._trip_id}&token={token}"
-        content["sections_map"] = {
-            "flights": [r["link"] for r in curated["flights"] if r.get("link")],
-            "places": [r["link"] for r in curated["places"] if r.get("link")],
-            "maps": [r["link"] for r in curated["maps"] if r.get("link")],
-        }
-        shown_links = {link for s in scenes for link in s.get("place_links", []) if link}
-        content["appendix"] = self._build_appendix(
-            research,
-            exclude_links=shown_links,
-            allowed_links=allowed_links,
-        )
-        # Pass intent fields for email template sections
-        content["travel_mode"] = intent.travel_mode
-        content["mobility"] = intent.mobility_preferences
-        content["accommodation_style"] = intent.accommodation_style
-        body_html = build_html_email(content)
-        body_text = self._compose_body_text(content)
-        package = {
-            "intent": intent.model_dump(),
-            "geo": research.get("geo", {}),
-            "corpus": corpus,
-            "curated": curated,
-            "curated_rationale": curated.get("rationale", ""),
-            "dream_rationale": curated.get("rationale", ""),
-            "dream": {"scenes": len(scenes)},
-            "tool_calls": research["tool_calls"],
-        }
-        return content, body_text, body_html, package
-
     @staticmethod
     def _build_appendix(research: dict, exclude_links: set[str] | None = None,
                         allowed_links: set[str] | None = None) -> dict:
@@ -1149,47 +1055,3 @@ class TripOrchestrator:
             "groups": groups,
             "source_links": source_links,
         }
-
-    @staticmethod
-    def _render_flights(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no flights available"
-
-        def label(i: int) -> str:
-            return f"[F{i}] " if numbered else ""
-
-        def flight_line(i: int, it: dict) -> str:
-            price = it.get("price_eur")
-            price_txt = f", {price} EUR" if isinstance(price, (int, float)) else ""
-            return (f"{label(i)}{it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
-                    f"departure {it.get('departure_date')}{price_txt} — {it.get('link')}")
-
-        return "\n".join(flight_line(i, it) for i, it in enumerate(items))
-
-    @staticmethod
-    def _render_maps(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no points of interest"
-
-        def label(i: int) -> str:
-            return f"[M{i}] " if numbered else ""
-
-        return "\n".join(
-            f"{label(i)}{it.get('name')} ({it.get('type')}, {it.get('rating')} stars) — {it.get('link')}"
-            for i, it in enumerate(items)
-        )
-
-    @staticmethod
-    def _render_places(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no accommodations available"
-
-        def label(i: int) -> str:
-            return f"[P{i}] " if numbered else ""
-
-        def place_line(i: int, it: dict) -> str:
-            price = it.get("price_per_night_eur")
-            price_txt = f"{price} EUR/night" if isinstance(price, (int, float)) else "prezzo non indicato"
-            return f"{label(i)}{it.get('name')} — {price_txt} — {it.get('link')}"
-
-        return "\n".join(place_line(i, it) for i, it in enumerate(items))

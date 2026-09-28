@@ -30,7 +30,7 @@ def test_render_card_without_optional_fields():
 def test_build_html_email_includes_escaped_parts():
     content = {
         "opening": 'Hello "world"',
-        "understanding": "<i>ok</i>",
+        "moments": [{"prose": "<i>ok</i>", "place_links": []}],
         "resources": [{"name": "X", "description": "d", "price": "p", "link": "https://x.com"}],
         "cta": "A presto",
         "honest_note": "Auto",
@@ -94,30 +94,28 @@ def test_simplify_anyof_nullable():
     assert out["type"] == ["string", "null"]
 
 
-def test_compose_body_text_acts_mirror():
+def test_compose_body_text_letter_mirror():
     content = {
         "opening": "Ciao",
-        "understanding": "Ti ho capito",
         "draft_note": "Prima bozza.",
-        "arrival": "Atterri la sera.",
         "resources": [
             {"name": "Volo ANA · MXP – HND", "price": "320 EUR", "description": "",
              "link": "https://x.com"},
             {"name": "Ryokan X", "price": "", "description": "", "link": "https://y.com"},
         ],
         "sections_map": {"flights": ["https://x.com"], "maps": ["https://y.com"]},
-        "scenes": [{"title": "Sera", "prose": "Luci calde e sale.",
-                    "place_links": ["https://y.com"]}],
-        "logistics": "Volo sobrio e diretto.",
+        "moments": [{"prose": "Luci calde e sale.", "place_links": ["https://y.com"]}],
+        "places": [{"name": "Volo ANA · MXP – HND", "price": "320 EUR", "link": "https://x.com"},
+                   {"name": "Ryokan X", "price": "", "link": "https://y.com"}],
+        "closing": "Facci sapere",
         "cta": "Facci sapere",
         "honest_note": "Auto",
     }
     text = TripOrchestrator._compose_body_text(content)
     assert text.startswith("Ciao")
-    order = ["Ciao", "Ti ho capito", "Prima bozza.", "Atterri la sera.",
-             "Sera", "Luci calde e sale.", "https://y.com",
-             "Volo: ANA · MXP – HND · 320 EUR", "https://x.com",
-             "Volo sobrio e diretto.", "Facci sapere", "Auto"]
+    order = ["Ciao", "Prima bozza.", "Luci calde e sale.", "https://y.com",
+             "I luoghi:", "Volo ANA · MXP – HND — 320 EUR", "https://x.com",
+             "Facci sapere", "Auto"]
     positions = [text.index(s) for s in order]
     assert positions == sorted(positions), "twin strings must follow HTML order"
     assert "L'itinerario:" not in text and "Punti di partenza:" not in text

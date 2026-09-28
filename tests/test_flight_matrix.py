@@ -3,7 +3,7 @@ import logging
 
 from src.core.models import (
     DepartureAirports,
-    DreamContent,
+    LetterContent,
     ResolvedDestinations,
     ResolvedPlace,
     TripIntent,
@@ -108,8 +108,8 @@ async def test_region_trip_resolves_destination_and_logs_rationale(monkeypatch):
     assert package["geo"]["departure_codes"] == ["MXP", "FCO"]
     assert package["geo"]["skipped_flights_reason"] is None
 
-    dream_prompts = [p for p, m in llm.calls if m is DreamContent]
-    assert dream_prompts and "mare e relax" in dream_prompts[0]
+    letter_prompts = [p for p, m in llm.calls if m is LetterContent]
+    assert letter_prompts and "mare e relax" in letter_prompts[0]
     assert "Mare tranquillo" in package["geo"]["resolve_rationale"]
 
 
@@ -154,24 +154,23 @@ async def test_van_trip_skips_all_flight_probes(monkeypatch):
 
 
 async def test_missing_airports_after_geo_planning_skips_probes(monkeypatch):
-    from src.core.models import DreamContent
+    from src.core.models import LetterContent
 
     trip = make_trip(
         destination=None, departure_location=None,
         start_date="2026-09-01", end_date="2026-09-10",
     )
     intent = TripIntent(destination=None)
-    llm = FakeLLM(response=intent, dream_responses=[DreamContent(
+    llm = FakeLLM(response=intent, letter_responses=[LetterContent(
         subject="Viaggio",
-        arrival="Arrivi senza voli diretti e la strada si apre davanti a te.",
-        scenes=[
-            {"title": "Hotel X",
-             "prose": "la hall profuma di legno e caffè mentre le camere luminose si affacciano sul cortile interno pieno di piante e silenzio",
+        opening="Arrivi senza voli diretti e la strada si apre davanti a te.",
+        moments=[
+            {"prose": "la hall profuma di legno e caffè mentre le camere luminose si affacciano sul cortile interno pieno di piante e silenzio",
              "place_links": ["https://example.com/hotel"]},
-            {"title": "Hotel Y",
-             "prose": "la colazione arriva con pane caldo e marmellata mentre il giardino esterno accoglie gli ospiti tra ombra e tavoli bianchi",
+            {"prose": "la colazione arriva con pane caldo e marmellata mentre il giardino esterno accoglie gli ospiti tra ombra e tavoli bianchi",
              "place_links": ["https://example.com/hotel-y"]},
-        ])])  # geo defaults: no resolutions, no codes
+        ],
+        closing="Ne parliamo insieme.")])  # geo defaults: no resolutions, no codes
     calls = []
 
     async def fake_flights(*args, **kwargs):

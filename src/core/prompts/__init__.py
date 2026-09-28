@@ -174,29 +174,6 @@ def build_geo_prompt(trip: TripResponse, intent: TripIntent) -> str:
     """
 
 
-def build_dream_prompt(trip_free_text: str, intent: TripIntent, flights_block: str,
-                       maps_block: str, places_block: str, trip_days: int) -> str:
-    return f"""Scrivi la proposta di viaggio come racconto in 3 atti, in italiano.
-    Brief del viaggiatore: "{trip_free_text}"
-    Interessi: {', '.join(intent.interests) or 'not specified'} — Stile: {', '.join(intent.style) or 'not specified'}
-    Travel mode: {intent.travel_mode or 'not specified'} — Durata: {trip_days} giorni.
-    Risorse verificate (cita link SOLO da qui):
-    Voli:
-    {flights_block}
-    Luoghi:
-    {maps_block}
-    Pernottamenti:
-    {places_block}
-    Atto I (arrival): scena d'apertura sensoriale, 2-3 frasi, un momento d'arrivo.
-    Atto II (scenes): 2 o 3 scene, ognuna con titolo evocativo e 3-5 frasi con almeno
-    2 dettagli sensoriali concreti (luce, cibo, suoni, materia). Puoi evocare zone senza
-    link, ma ogni NOME PROPRIO di locale o struttura deve avere il suo link verificato.
-    Atto III: implicito nel finale — chiudi l'ultima scena aprendo al passo umano.
-    VIETATO: filler ('possibile sosta', 'da inserire', 'pratico', 'una base per',
-    'coerente con'), aggettivi vuoti da soli ('bello', 'incantevole', 'meraviglioso'),
-    frasi su dati mancanti, fasi stirate, carbon-copy del brief."""
-
-
 def build_letter_prompt(free_text: str, intent: TripIntent, places_block: str) -> str:
     return f"""Scrivi una lettera di viaggio personale, in italiano, come racconto continuo.
     Brief del viaggiatore: "{free_text}"

@@ -1,9 +1,8 @@
 from src.core.orchestrator import TripOrchestrator
-from src.services.apis.email import _render_arrival, _render_scenes, build_html_email
+from src.services.apis.email import _render_moments, build_html_email
 
 CONTENT = {
     "opening": "Apertura.",
-    "understanding": "Comprensione.",
     "cta": "CTA.",
     "honest_note": "Nota.",
     "resources": [
@@ -31,16 +30,16 @@ def test_empty_group_not_rendered_but_nonempty_is():
     assert ">Voli<" not in html and ">Dove stare<" not in html and ">Cosa fare<" not in html
 
 
-def test_scenes_render_in_order_with_single_links():
+def test_moments_render_in_order_with_single_links():
     content = dict(CONTENT)
-    content["arrival"] = "Atterri la sera."
-    content["scenes"] = [
-        {"title": "Festo", "prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
-        {"title": "Sud", "prose": "Sale e vento.", "place_links": []},
+    content["opening"] = "Sbarchi la sera."
+    content["moments"] = [
+        {"prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
+        {"prose": "Sale e vento.", "place_links": []},
     ]
     html = build_html_email(content)
-    assert html.index("Atterri la sera.") < html.index("Festo") < html.index("Sud")
-    assert html.count('href="https://m.example"') == 1  # one Vedi link per scene link
+    assert html.index("Sbarchi la sera.") < html.index("Pietre calde") < html.index("Sale e vento.")
+    assert html.count('href="https://m.example"') == 1  # one Vedi link per moment link
 
 
 def test_appendix_sources_present_with_all_links():
@@ -63,32 +62,32 @@ def test_leftover_resources_render_flat():
     ]
     content["sections_map"] = {}
     html = build_html_email(content)
-    assert "Orfano" not in html  # orphan resources never render without a scene link
+    assert "Orfano" not in html  # orphan resources never render without a moment link
 
 
-def test_render_arrival_empty_is_empty():
-    assert _render_arrival("") == ""
-    assert _render_arrival("   ") == ""
-
-
-def test_render_scenes_reuses_cards_and_skips_orphans():
+def test_render_moments_reuses_cards_and_skips_orphans():
     cards = {"https://x.it": {"name": "Taverna X", "link": "https://x.it"}}
-    html = _render_scenes(
-        [{"title": "Sera", "prose": "Luci calde e sale.",
+    html = _render_moments(
+        [{"prose": "Luci calde e sale.",
           "place_links": ["https://x.it", "https://orphan.example"]}],
         cards)
-    assert "Sera" in html and "Luci calde" in html
+    assert "Luci calde" in html
     assert 'href="https://x.it"' in html
     assert "orphan.example" not in html  # orphan links never render
 
 
-def test_scene_link_has_single_href():
+def test_render_moments_skips_empty_prose():
+    assert _render_moments([{"prose": "   ", "place_links": []}], {}) == ""
+    assert _render_moments([], {}) == ""
+
+
+def test_moment_link_has_single_href():
     content = dict(CONTENT)
-    content["scenes"] = [
-        {"title": "Festo", "prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
+    content["moments"] = [
+        {"prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
     ]
     html = build_html_email(content)
-    assert html.count('href="https://m.example"') == 1, "scene title is plain text, Vedi the only link"
+    assert html.count('href="https://m.example"') == 1, "prose is plain text, Vedi the only link"
 
 
 def test_stars_normalized_to_stelle():
@@ -110,7 +109,7 @@ def test_trip_summary_absent_renders_nothing():
     assert "trip-summary" not in html
 
 
-def test_selection_heading_ignored_in_acts_world():
+def test_selection_heading_ignored_in_letter_world():
     content = dict(CONTENT)
     content["selection_heading"] = "Ecco la selezione per Creta"
     html = build_html_email(content)
@@ -118,10 +117,12 @@ def test_selection_heading_ignored_in_acts_world():
     assert "Ecco i punti di partenza" not in html
 
 
-def test_logistics_flight_single_link_with_button():
-    html = build_html_email(CONTENT)
-    assert html.count("https://f.example\"") == 1, "logistics keeps only the Vedi il volo link"
-    assert "Vedi il volo" in html
+def test_places_list_flight_single_link():
+    content = dict(CONTENT)
+    content["places"] = [{"name": "Volino", "price": "300 EUR", "link": "https://f.example"}]
+    html = build_html_email(content)
+    assert html.count('href="https://f.example"') == 1, "places list keeps a single vedi link"
+    assert "Volino" in html and "300 EUR" in html
 
 
 def test_card_and_feedback_box_keep_dark_classes():
@@ -149,38 +150,38 @@ def test_followup_button_label():
     assert "Lascia un feedback" not in html
 
 
-def test_body_text_is_twin_of_acts_html():
-    """Twin rule: every HTML string (arrival, scene titles+prose+links,
-    logistics, draft note) appears in the text body in the same order."""
+def test_body_text_is_twin_of_letter_html():
+    """Twin rule: every HTML string (opening, moments prose+links, places,
+    draft note) appears in the text body in the same order."""
     content = dict(CONTENT)
     content["draft_note"] = "Prima bozza."
-    content["arrival"] = "Atterri la sera."
-    content["scenes"] = [
-        {"title": "Festo", "prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
-        {"title": "Sud", "prose": "Sale e vento.", "place_links": []},
+    content["opening"] = "Sbarchi la sera."
+    content["moments"] = [
+        {"prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
+        {"prose": "Sale e vento.", "place_links": []},
     ]
-    content["logistics"] = "Volo A · 100 EUR"
+    content["places"] = [{"name": "Posto", "price": "", "link": "https://m.example"}]
     text = TripOrchestrator._compose_body_text(content)
     html = build_html_email(content)
-    order = ["Apertura.", "Comprensione.", "Prima bozza.", "Atterri la sera.",
-             "Festo", "Pietre calde e dakos.", "https://m.example",
-             "Sud", "Sale e vento.", "Volo A · 100 EUR", "CTA.", "Nota."]
+    order = ["Sbarchi la sera.", "Prima bozza.",
+             "Pietre calde e dakos.", "https://m.example",
+             "Sale e vento.", "I luoghi:", "Posto", "CTA.", "Nota."]
     positions = [text.index(s) for s in order]
     assert positions == sorted(positions), "twin strings must follow HTML order"
-    for s in ("Atterri la sera.", "Festo", "Pietre calde e dakos.",
-              "https://m.example", "Sud", "Volo A · 100 EUR"):
+    for s in ("Sbarchi la sera.", "Pietre calde e dakos.",
+              "https://m.example", "Sale e vento.", "I luoghi"):
         assert s in html
 
 
-def test_acts_render_in_order():
+def test_letter_renders_in_order():
     content = dict(CONTENT)
-    content["arrival"] = "Atterri la sera."
-    content["scenes"] = [
-        {"title": "Festo", "prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
-        {"title": "Sud", "prose": "Sale e vento.", "place_links": []},
+    content["opening"] = "Sbarchi la sera."
+    content["moments"] = [
+        {"prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
+        {"prose": "Sale e vento.", "place_links": []},
     ]
-    content["logistics"] = "Volo A · 100 EUR"
+    content["places"] = [{"name": "Posto", "price": "", "link": "https://m.example"}]
     html = build_html_email(content)
-    assert html.index("Atterri la sera") < html.index("Festo") < html.index("Sud")
-    assert "Volo A" in html
+    assert html.index("Sbarchi la sera") < html.index("Pietre calde") < html.index("Sale e vento")
+    assert html.index("Sale e vento") < html.index("I luoghi")
     assert '<table class="card-frame"' not in html
