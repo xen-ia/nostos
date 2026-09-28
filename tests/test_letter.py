@@ -153,3 +153,80 @@ def test_letter_renders_moments_and_named_places():
     assert "Palazzo di Festo" in html and "https://example.com/festo" in html
     assert "card-frame" not in html.split("</head>", 1)[-1]
     assert "$" not in html.split("</head>", 1)[-1].replace("→", "")
+
+
+def test_raw_urls_stripped_from_prose():
+    from src.services.apis.email import build_html_email
+    content = {
+        "opening": "Si parte.",
+        "moments": [
+            {"prose": "Da Knossos (http://taverna-knossos.com/) arrivano i profumi.",
+             "place_links": ["http://taverna-knossos.com/"]},
+            {"prose": "Il mare odora di sale.", "place_links": []},
+        ],
+        "places": [{"name": "Knossos", "price": "", "link": "http://taverna-knossos.com/"}],
+        "closing": "Ciao.",
+        "cta": "CTA.",
+        "draft_note": "",
+        "feedback_link": "",
+        "honest_note": "Nota.",
+        "resources": [{"name": "Knossos", "link": "http://taverna-knossos.com/"}],
+        "travel_mode": "fixed", "mobility": [], "accommodation_style": "hotel",
+        "appendix": {"groups": [], "source_links": []},
+    }
+    html = build_html_email(content)
+    assert "http://taverna-knossos.com/" in html  # named link survives once
+    assert html.count("http://taverna-knossos.com/") == 1  # places list only
+    assert "(http://taverna-knossos.com/)" not in html  # never raw inside prose
+
+
+def test_header_is_title_only():
+    from src.services.apis.email import build_html_email
+    content = {
+        "opening": "Si parte.",
+        "moments": [
+            {"prose": "A Festo la luce taglia i muri color miele e il vento sa di resina.",
+             "place_links": []},
+            {"prose": "Il mare odora di sale e timo secco al mattino presto.",
+             "place_links": []},
+        ],
+        "places": [],
+        "closing": "Ciao.",
+        "cta": "CTA.",
+        "draft_note": "",
+        "trip_summary": "Creta · 30 lug – 30 ago 2027 · coppia (2)",
+        "feedback_link": "",
+        "honest_note": "Nota.",
+        "resources": [],
+        "travel_mode": "fixed", "mobility": [], "accommodation_style": "hotel",
+        "appendix": {"groups": [], "source_links": []},
+    }
+    html = build_html_email(content)
+    assert "Νόστος" in html and "Ξενία" not in html
+    assert "coppia (2)" not in html and "trip-summary" not in html
+
+
+def test_place_names_are_the_only_links():
+    from src.services.apis.email import build_html_email
+    content = {
+        "opening": "Si parte.",
+        "moments": [
+            {"prose": "A Festo la luce taglia i muri color miele e il vento sa di resina.",
+             "place_links": ["https://example.com/festo"]},
+            {"prose": "Il mare odora di sale e timo secco al mattino presto.",
+             "place_links": []},
+        ],
+        "places": [{"name": "Palazzo di Festo", "price": "", "link": "https://example.com/festo"}],
+        "closing": "Ciao.",
+        "cta": "CTA.",
+        "draft_note": "",
+        "feedback_link": "",
+        "honest_note": "Nota.",
+        "resources": [{"name": "Palazzo di Festo", "link": "https://example.com/festo"}],
+        "travel_mode": "fixed", "mobility": [], "accommodation_style": "hotel",
+        "appendix": {"groups": [], "source_links": []},
+    }
+    html = build_html_email(content)
+    assert "Palazzo di Festo" in html  # named link, no orphan Vedi
+    assert "Vedi →" not in html and "<svg" not in html
+    assert html.count("https://example.com/festo") == 1  # places list only

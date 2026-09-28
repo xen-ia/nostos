@@ -179,7 +179,7 @@ def build_letter_prompt(free_text: str, intent: TripIntent, places_block: str) -
     Brief del viaggiatore: "{free_text}"
     Interessi: {', '.join(intent.interests) or 'not specified'} — Stile: {', '.join(intent.style) or 'not specified'}
     Travel mode: {intent.travel_mode or 'not specified'}
-    Luoghi verificati (cita link SOLO da qui):
+    Luoghi verificati (cita link SOLO da qui, mai incollare URL grezzi nella prosa):
     {places_block}
     REGOLE. Apertura: scena sensoriale di 2-3 frasi. Poi 2 o 3 momenti in prosa continua,
     ognuno con almeno 2 dettagli sensoriali concreti (luce, cibo, suoni, materia).

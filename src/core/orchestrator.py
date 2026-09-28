@@ -15,8 +15,8 @@ from src.services.apis.email import (
     SIGNATURE_NAME,
     SIGNATURE_ROLE,
     EmailSender,
+    _strip_raw_urls,
     build_html_email,
-    format_trip_summary,
 )
 from src.infrastructure.database import Database
 from src.core.models import (
@@ -329,8 +329,9 @@ class TripOrchestrator:
         resources = email_content.get("resources", [])
         by_link = {r.get("link"): r for r in resources if r.get("link")}
         for moment in email_content.get("moments", []):
-            if moment.get("prose"):
-                lines.append(moment["prose"])
+            prose = _strip_raw_urls(moment.get("prose") or "")
+            if prose:
+                lines.append(prose)
             for link in moment.get("place_links", []):
                 if link in by_link:
                     lines.append(f"   {link}")
@@ -962,10 +963,6 @@ class TripOrchestrator:
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
         content["draft_note"] = DRAFT_NOTE
-        content["trip_summary"] = format_trip_summary(
-            trip.destination, trip.start_date, trip.end_date,
-            trip.travelers_count, trip.travelers_type,
-        )
         from src.core.feedback_token import make_token
         from src.settings import get_settings
 

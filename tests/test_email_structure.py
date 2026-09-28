@@ -50,7 +50,9 @@ MOMENT_CONTENT = {**BASE,
                        "place_links": ["https://h.example/x"]},
                       {"prose": "Cucina vera e mare.",
                        "place_links": ["https://y.example/t"]},
-                  ]}
+                  ],
+                  "places": [{"name": "Taverna Y", "price": "",
+                              "link": "https://y.example/t"}]}
 
 
 def test_moments_use_sibling_anchors_no_nesting():
@@ -58,11 +60,10 @@ def test_moments_use_sibling_anchors_no_nesting():
     html = build_html_email(content)
     # No anchor may contain another anchor anywhere in the email.
     assert not re.search(r"<a\b[^>]*>(?:(?!</a>).)*<a\b", html, re.S | re.I)
-    # Each moment exposes exactly one action link (prose is plain text, no boxes).
-    assert html.count('href="https://h.example/x"') == 1  # moment one only
-    assert html.count('href="https://y.example/t"') == 1  # moment two only
-    assert "Taverna Y" not in html  # resource names never render, only moment prose
-    assert "Luci calde" in html and "Vedi →" in html
+    # Moments are pure prose; named links live only in I luoghi.
+    assert html.count('href="https://h.example/x"') == 0
+    assert html.count('href="https://y.example/t"') == 1
+    assert "Taverna Y" in html
     assert '<table class="card-frame"' not in html
 
 
@@ -114,11 +115,11 @@ def test_moment_renders_prose_with_single_vedi_link():
                    {"name": "Taverna X", "price": "", "link": maps_link}],
     }
     html = build_html_email(content)
-    assert "Cucina vera" in html  # moment renders
+    assert "Cucina vera" in html  # moment renders, prose only
     assert "Come arrivare" not in html  # no arrival hero block anymore
     assert "I luoghi" in html and "196 EUR" in html  # places list carries flight + price
     assert '<table class="card-frame"' not in html  # flight never a grouped card
-    assert html.count(f'href="{maps_link}"') == 2  # moment Vedi + places list vedi
+    assert html.count(f'href="{maps_link}"') == 1  # places list only
     assert html.count(f'href="{link}"') == 1  # places list only
     cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
     assert all(link not in card for card in cards)

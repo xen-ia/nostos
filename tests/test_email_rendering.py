@@ -30,7 +30,7 @@ def test_empty_group_not_rendered_but_nonempty_is():
     assert ">Voli<" not in html and ">Dove stare<" not in html and ">Cosa fare<" not in html
 
 
-def test_moments_render_in_order_with_single_links():
+def test_moments_render_in_order_prose_only():
     content = dict(CONTENT)
     content["opening"] = "Sbarchi la sera."
     content["moments"] = [
@@ -39,7 +39,7 @@ def test_moments_render_in_order_with_single_links():
     ]
     html = build_html_email(content)
     assert html.index("Sbarchi la sera.") < html.index("Pietre calde") < html.index("Sale e vento.")
-    assert html.count('href="https://m.example"') == 1  # one Vedi link per moment link
+    assert 'href="https://m.example"' not in html  # moments carry no links anymore
 
 
 def test_appendix_sources_present_with_all_links():
@@ -65,29 +65,27 @@ def test_leftover_resources_render_flat():
     assert "Orfano" not in html  # orphan resources never render without a moment link
 
 
-def test_render_moments_reuses_cards_and_skips_orphans():
-    cards = {"https://x.it": {"name": "Taverna X", "link": "https://x.it"}}
+def test_render_moments_prose_only_skips_empty():
     html = _render_moments(
         [{"prose": "Luci calde e sale.",
-          "place_links": ["https://x.it", "https://orphan.example"]}],
-        cards)
+          "place_links": ["https://x.it", "https://orphan.example"]}])
     assert "Luci calde" in html
-    assert 'href="https://x.it"' in html
-    assert "orphan.example" not in html  # orphan links never render
+    assert "https://x.it" not in html and "orphan.example" not in html
 
 
 def test_render_moments_skips_empty_prose():
-    assert _render_moments([{"prose": "   ", "place_links": []}], {}) == ""
-    assert _render_moments([], {}) == ""
+    assert _render_moments([{"prose": "   ", "place_links": []}]) == ""
+    assert _render_moments([]) == ""
 
 
-def test_moment_link_has_single_href():
+def test_moment_has_no_links_at_all():
     content = dict(CONTENT)
     content["moments"] = [
         {"prose": "Pietre calde e dakos.", "place_links": ["https://m.example"]},
     ]
     html = build_html_email(content)
-    assert html.count('href="https://m.example"') == 1, "prose is plain text, Vedi the only link"
+    assert "Pietre calde" in html
+    assert 'href="https://m.example"' not in html  # links live only in I luoghi
 
 
 def test_stars_normalized_to_stelle():
@@ -95,18 +93,6 @@ def test_stars_normalized_to_stelle():
     html = _render_card({"name": "Festo", "description": "Punto storico, 4.3 stars",
                          "price": "", "link": "https://x.it"})
     assert "4.3 stelle" in html and "stars" not in html
-
-
-def test_trip_summary_renders_when_present():
-    content = dict(CONTENT)
-    content["trip_summary"] = "Creta · 30 lug – 30 ago 2027 · coppia (2)"
-    html = build_html_email(content)
-    assert "Creta · 30 lug" in html
-
-
-def test_trip_summary_absent_renders_nothing():
-    html = build_html_email(CONTENT)
-    assert "trip-summary" not in html
 
 
 def test_selection_heading_ignored_in_letter_world():

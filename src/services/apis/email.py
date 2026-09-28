@@ -208,22 +208,30 @@ def _render_button_row(feedback_link: str) -> str:
     )
 
 
-def _render_moments(moments: list[dict], cards_by_link: dict[str, dict]) -> str:
+#: Raw URLs pasted by the LLM inside prose (never allowed: links live only
+#: in place_links). Stripped at render with whitespace cleanup.
+_RAW_URL_RE = re.compile(r"https?://\S+")
+_EMPTY_PARENS_RE = re.compile(r"\(\s*\)")
+_WS_BEFORE_PUNCT_RE = re.compile(r" +([.,;:!?])")
+
+
+def _strip_raw_urls(text: str) -> str:
+    out = _RAW_URL_RE.sub("", text or "")
+    out = _EMPTY_PARENS_RE.sub("", out)
+    out = re.sub(r"\s{2,}", " ", out)
+    return _WS_BEFORE_PUNCT_RE.sub(r"\1", out).strip()
+
+
+def _render_moments(moments: list[dict]) -> str:
     blocks = []
     for moment in moments or []:
-        prose = (moment.get("prose") or "").strip()
+        prose = _strip_raw_urls((moment.get("prose") or "").strip())
         if not prose:
             continue
-        links = "".join(
-            f'<div style="margin-top:6px;"><a href="{_e(link)}" target="_blank" '
-            f'style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,'
-            f'Arial,sans-serif;font-size:13px;font-weight:600;color:#A84E28;'
-            f'text-decoration:underline;">Vedi →</a></div>'
-            for link in moment.get("place_links", []) if link in cards_by_link)
         blocks.append(
             f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
             f'Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#3B4956;'
-            f'margin-top:16px;">{_e(prose)}</div>' + links)
+            f'margin-top:16px;">{_e(prose)}</div>')
     return "".join(blocks)
 
 
@@ -232,58 +240,20 @@ def _render_places_list(places: list[dict]) -> str:
     for place in places or []:
         if not place.get("link"):
             continue
-        line = f"{(place.get('name') or '').strip()}"
-        if (place.get("price") or "").strip():
-            line += f" — {place['price'].strip()}"
+        name = (place.get("name") or "").strip()
+        price = (place.get("price") or "").strip()
         rows.append(
-            f'<div style="margin-top:8px;font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
-            f'Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#3B4956;">{_e(line)} '
-            f'<a href="{_e(place["link"])}" target="_blank" style="color:#A84E28;'
-            f'font-weight:600;text-decoration:underline;">vedi →</a></div>')
+            f'<div style="margin-top:10px;font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+            f'Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#3B4956;">'
+            f'<a href="{_e(place["link"])}" target="_blank" style="color:#221D0F;'
+            f'font-weight:600;text-decoration:underline;text-decoration-color:#A84E28;'
+            f'text-underline-offset:3px;">{_e(name)}</a>'
+            + (f' <span class="d-muted" style="color:#4E6071;">— {_e(price)}</span>' if price else "")
+            + "</div>")
     if not rows:
         return ""
     return ('<div class="d-heading" style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;'
             'font-weight:600;color:#221D0F;margin-top:22px;">I luoghi</div>' + "".join(rows))
-
-
-_IT_MONTHS = ("gen", "feb", "mar", "apr", "mag", "giu",
-              "lug", "ago", "set", "ott", "nov", "dic")
-
-
-def format_trip_summary(destination: str | None, start_date: str | None,
-                        end_date: str | None, travelers_count: int | None,
-                        travelers_type: str | None) -> str:
-    """One-line trip memory: 'Creta · 30 lug – 30 ago 2027 · coppia (2)'.
-    Missing parts are skipped; empty when nothing is known."""
-
-    def day_month(iso: str | None) -> str:
-        try:
-            y, m, d = (iso or "").split("-")
-            return f"{int(d)} {_IT_MONTHS[int(m) - 1]}"
-        except (ValueError, IndexError):
-            return ""
-
-    parts = []
-    if (destination or "").strip():
-        parts.append(destination.strip())
-    start, end = day_month(start_date), day_month(end_date)
-    year = (start_date or "")[:4] if (start_date or "")[:4].isdigit() else ""
-    if start and end:
-        parts.append(f"{start} – {end} {year}".strip())
-    elif start:
-        parts.append(f"{start} {year}".strip())
-    who = " ".join(p for p in (travelers_type or "", f"({travelers_count})" if travelers_count else "") if p.strip())
-    if who.strip():
-        parts.append(who.strip())
-    return " · ".join(parts)
-
-
-def _render_trip_summary(summary: str) -> str:
-    if not (summary or "").strip():
-        return ""
-    return (f'<div class="trip-summary d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,'
-            f'\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:12px;letter-spacing:0.8px;'
-            f'color:#4E6071;margin-top:10px;text-align:center;">{_e(summary.strip())}</div>')
 
 
 def _render_draft_note(note: str) -> str:
@@ -304,9 +274,8 @@ def build_html_email(content: dict) -> str:
     cards_by_link = {r.get("link"): r for r in resources if r.get("link")}
     return load_email_template().safe_substitute(
         letter_opening=_e(content.get("opening") or ""),
-        trip_summary=_render_trip_summary(content.get("trip_summary") or ""),
         draft_note=_render_draft_note(content.get("draft_note") or ""),
-        moments=_render_moments(content.get("moments", []), cards_by_link),
+        moments=_render_moments(content.get("moments", [])),
         places_list=_render_places_list(content.get("places", [])),
         rental_section=_render_rental_group(content),
         sources_section=_render_sources(content.get("appendix", {}), exclude_links=shown_links),

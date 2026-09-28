@@ -176,11 +176,10 @@ async def test_compose_letter_builds_resources_from_curated():
         assert link in body_html and link in body_text  # twin: no lost links
 
 
-async def test_compose_letter_sets_trip_summary():
-    """REGRESSION: letter mail must render the trip-memory slot (destination + dates)."""
+async def test_compose_letter_has_no_trip_params():
+    """Header is title-only: no request params (destination/dates/party) rendered."""
     from src.core.models import LetterContent, TripIntent
     from src.core.orchestrator import TripOrchestrator
-    from src.services.apis.email import format_trip_summary
     from tests.fakes import FakeDatabase, FakeEmailSender, FakeLLM, make_store, make_trip
 
     curated = {
@@ -213,7 +212,5 @@ async def test_compose_letter_sets_trip_summary():
                 "curated": curated, "tool_calls": [], "geo": {}}
     content, _body_text, body_html, _package = await orch._compose_letter(
         trip, TripIntent(destination="Creta"), research)
-    expected = format_trip_summary("Creta", "2026-09-01", "2026-09-10", 2, "coppia")
-    assert content["trip_summary"] == expected
-    assert "Creta" in body_html and "1 set" in body_html and "10 set" in body_html
-    assert expected in body_html
+    assert "trip_summary" not in content  # header carries no request params
+    assert "coppia (2)" not in body_html
