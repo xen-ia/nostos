@@ -1,7 +1,6 @@
 """TripOrchestrator: end-to-end trip pipeline (intent -> research -> email)."""
 import asyncio
 import logging
-import re
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -316,47 +315,37 @@ class TripOrchestrator:
 
     @staticmethod
     def _compose_body_text(email_content: dict) -> str:
-        """Acts mirror of the HTML email: opening, understanding, draft note,
-        arrival, scenes (title+prose+links), flight strip, logistics, rental,
-        sources, then the cta/honest_note/signature tail. No flat resource
+        """Letter mirror of the HTML email: opening, draft note, moments
+        (prose + indented links), the named 'I luoghi' list, rental, sources,
+        then the closing-as-cta/honest_note/signature tail. No flat resource
         list, no phases, no travel box."""
         lines: list[str] = []
         if (email_content.get("opening") or "").strip():
             lines.append(email_content["opening"].strip())
-            lines.append("")
-        if (email_content.get("understanding") or "").strip():
-            lines.append(email_content["understanding"].strip())
             lines.append("")
         if (email_content.get("draft_note") or "").strip():
             lines.append(email_content["draft_note"].strip())
             lines.append("")
         resources = email_content.get("resources", [])
         by_link = {r.get("link"): r for r in resources if r.get("link")}
-        if (email_content.get("arrival") or "").strip():
-            lines.append(email_content["arrival"].strip())
-            lines.append("")
-        for scene in email_content.get("scenes", []):
-            if scene.get("title"):
-                lines.append(scene["title"])
-            if scene.get("prose"):
-                lines.append(scene["prose"])
-            for link in scene.get("place_links", []):
+        for moment in email_content.get("moments", []):
+            if moment.get("prose"):
+                lines.append(moment["prose"])
+            for link in moment.get("place_links", []):
                 if link in by_link:
                     lines.append(f"   {link}")
             lines.append("")
+        named = [p for p in email_content.get("places", []) or [] if p.get("link")]
+        if named:
+            lines.append("I luoghi:")
+            for place in named:
+                entry = (place.get("name") or "").strip()
+                if (place.get("price") or "").strip():
+                    entry += f" — {place['price'].strip()}"
+                lines.append(entry)
+                lines.append(f"   {place['link']}")
+            lines.append("")
         smap = email_content.get("sections_map", {})
-        flight_links = set(smap.get("flights", []))
-        dream_flights = [r for r in resources if r.get("link") in flight_links]
-        for flight in dream_flights:
-            name = re.sub(r"^Volo\s+", "", flight.get("name") or "Volo")
-            facts = " · ".join(p for p in [name, flight.get("price")] if p)
-            lines.append(f"Volo: {facts}")
-            lines.append(f"   {flight['link']}")
-        if dream_flights:
-            lines.append("")
-        if (email_content.get("logistics") or "").strip():
-            lines.append(email_content["logistics"].strip())
-            lines.append("")
         travel_mode = email_content.get("travel_mode")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
         is_van = travel_mode_lower == "van_life" or (email_content.get("accommodation_style") or "").lower() == "van"
@@ -395,7 +384,7 @@ class TripOrchestrator:
                 lines.append("Fonti:")
                 lines.extend(urls)
         lines.append("")
-        lines.append(email_content["cta"])
+        lines.append(email_content.get("closing") or email_content["cta"])
         lines.append("")
         lines.append(email_content["honest_note"])
         lines.append("")
@@ -970,14 +959,6 @@ class TripOrchestrator:
         # Deterministic grounding lists from curated research (never LLM prose).
         content["resources"] = self._dream_resources(curated)
         content["places"] = self._letter_places(curated, moments)
-        # Interim shim (Task 3 owns the real twin): expose moments through the
-        # existing scenes-shaped renderers so the current template + text twin
-        # carry the letter prose until the letter template lands.
-        content["scenes"] = [
-            {"title": "", "prose": m.get("prose", ""),
-             "place_links": m.get("place_links", [])}
-            for m in moments
-        ]
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
         content["draft_note"] = DRAFT_NOTE

@@ -208,6 +208,44 @@ def _render_button_row(feedback_link: str) -> str:
     )
 
 
+def _render_moments(moments: list[dict], cards_by_link: dict[str, dict]) -> str:
+    blocks = []
+    for moment in moments or []:
+        prose = (moment.get("prose") or "").strip()
+        if not prose:
+            continue
+        links = "".join(
+            f'<div style="margin-top:6px;"><a href="{_e(link)}" target="_blank" '
+            f'style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,'
+            f'Arial,sans-serif;font-size:13px;font-weight:600;color:#A84E28;'
+            f'text-decoration:underline;">Vedi →</a></div>'
+            for link in moment.get("place_links", []) if link in cards_by_link)
+        blocks.append(
+            f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+            f'Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#3B4956;'
+            f'margin-top:16px;">{_e(prose)}</div>' + links)
+    return "".join(blocks)
+
+
+def _render_places_list(places: list[dict]) -> str:
+    rows = []
+    for place in places or []:
+        if not place.get("link"):
+            continue
+        line = f"{(place.get('name') or '').strip()}"
+        if (place.get("price") or "").strip():
+            line += f" — {place['price'].strip()}"
+        rows.append(
+            f'<div style="margin-top:8px;font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+            f'Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#3B4956;">{_e(line)} '
+            f'<a href="{_e(place["link"])}" target="_blank" style="color:#A84E28;'
+            f'font-weight:600;text-decoration:underline;">vedi →</a></div>')
+    if not rows:
+        return ""
+    return ('<div class="d-heading" style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;'
+            'font-weight:600;color:#221D0F;margin-top:22px;">I luoghi</div>' + "".join(rows))
+
+
 def _render_arrival(arrival: str) -> str:
     if not (arrival or "").strip():
         return ""
@@ -311,32 +349,19 @@ def _render_draft_note(note: str) -> str:
 
 def build_html_email(content: dict) -> str:
     smap = content.get("sections_map", {})
-    flight_links = set(smap.get("flights", []))
     resources = content.get("resources", [])
     shown_links = {r.get("link") for r in resources if r.get("link")}
     feedback_link = content.get("feedback_link") or ""
     cards_by_link = {r.get("link"): r for r in resources if r.get("link")}
-    flights = [r for r in resources if r.get("link") in flight_links]
-    logistics_section = _render_logistics(flights)
-    logistics_text = (content.get("logistics") or "").strip()
-    if logistics_text:
-        logistics_section += (
-            '<div class="d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
-            'Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#4E6071;'
-            'margin-top:8px;">'
-            f"{_e(logistics_text)}</div>"
-        )
     return load_email_template().safe_substitute(
-        opening=_e(content.get("opening") or ""),
-        understanding=_e(content.get("understanding") or ""),
+        letter_opening=_e(content.get("opening") or ""),
         trip_summary=_render_trip_summary(content.get("trip_summary") or ""),
         draft_note=_render_draft_note(content.get("draft_note") or ""),
-        arrival=_render_arrival(content.get("arrival") or ""),
-        scenes=_render_scenes(content.get("scenes", []), cards_by_link),
-        logistics_section=logistics_section,
+        moments=_render_moments(content.get("moments", []), cards_by_link),
+        places_list=_render_places_list(content.get("places", [])),
         rental_section=_render_rental_group(content),
         sources_section=_render_sources(content.get("appendix", {}), exclude_links=shown_links),
-        cta=_e(content.get("cta") or ""),
+        cta=_e(content.get("closing") or content.get("cta") or ""),
         button_row=_render_button_row(feedback_link),
         honest_note=_e(content.get("honest_note") or ""),
         signature_greeting=_e(SIGNATURE_GREETING),

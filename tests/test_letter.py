@@ -126,3 +126,30 @@ async def test_compose_letter_all_moments_invalid_aborts_without_email(monkeypat
     assert got.status == TripStatus.ERROR
     assert "fewer than 2 valid moments" in (got.result or "")
     assert len([m for _, m in llm.calls if m is LetterContent]) == 2
+
+
+def test_letter_renders_moments_and_named_places():
+    from src.services.apis.email import build_html_email
+    content = {
+        "opening": "La porta del van si apre sull'aria salata.",
+        "moments": [
+            {"prose": "A Festo la luce taglia i muri color miele.",
+             "place_links": ["https://example.com/festo"]},
+            {"prose": "Il mare odora di sale e timo.", "place_links": []},
+        ],
+        "places": [{"name": "Palazzo di Festo", "price": "", "link": "https://example.com/festo"}],
+        "closing": "Ne parliamo insieme.",
+        "cta": "Il prossimo passo è umano.",
+        "draft_note": "Prima bozza.",
+        "trip_summary": "Creta · 30 lug – 30 ago · per voi due",
+        "feedback_link": "https://x.example/fb",
+        "honest_note": "Nota.",
+        "resources": [{"name": "Palazzo di Festo", "link": "https://example.com/festo"}],
+        "travel_mode": "van_life", "mobility": [], "accommodation_style": "van",
+        "appendix": {"groups": [], "source_links": []},
+    }
+    html = build_html_email(content)
+    assert html.index("aria salata") < html.index("muri color miele") < html.index("Ne parliamo insieme")
+    assert "Palazzo di Festo" in html and "https://example.com/festo" in html
+    assert "card-frame" not in html.split("</head>", 1)[-1]
+    assert "$" not in html.split("</head>", 1)[-1].replace("→", "")
