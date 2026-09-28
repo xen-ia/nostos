@@ -1,5 +1,5 @@
 from src.core.models import DepartureAirports, ResolvedDestinations, TripIntent
-from src.core.prompts import build_email_prompt, build_geo_prompt
+from src.core.prompts import build_geo_prompt
 from tests.fakes import FakeLLM, make_trip
 
 
@@ -32,27 +32,3 @@ def test_build_geo_prompt_includes_trip_context_and_rules():
     assert "isole tranquille, lontano dalle folle" in prompt
     assert "The rationale MUST be written in ITALIAN." in prompt
     assert "max 4" in prompt.lower()
-
-
-def test_build_email_prompt_focus_line_omitted_when_empty():
-    trip = make_trip(stay_preference="agriturismo")
-    intent = TripIntent(destination="Tokyo")
-    prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
-    assert "Focus scelto dal sistema" not in prompt
-    assert "Travel mode: not specified" in prompt
-    assert "Accommodation style: not specified" in prompt
-    assert "Mobility: not specified" in prompt
-    assert "Budget:" in prompt
-    assert "USER FREE TEXT (verbatim):" in prompt
-    assert "\n\n\n" not in prompt
-
-
-def test_build_email_prompt_focus_line_rendered_when_given():
-    trip = make_trip(stay_preference="agriturismo")
-    intent = TripIntent(destination="Tokyo")
-    prompt = build_email_prompt(intent, "flights", "pois", "stays", trip,
-                                resolve_rationale="mete scelte per mare e quiete")
-    assert "Focus scelto dal sistema: mete scelte per mare e quiete" in prompt
-    assert "Budget:" in prompt
-    assert "USER FREE TEXT (verbatim):" in prompt
-    assert "COMPOSITION RULES:" in prompt

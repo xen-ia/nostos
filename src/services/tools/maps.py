@@ -15,7 +15,8 @@ def _normalize(place: dict) -> dict:
     }
 
 
-async def research(query: str, timeout: float = 60.0, api_key: str | None = None) -> list[dict]:
+async def research(query: str, timeout: float = 60.0, api_key: str | None = None,
+                   lang: str = "it") -> list[dict]:
     """Searches points of interest on Google Maps via SerpAPI for ONE query."""
     if not query:
         return []
@@ -25,7 +26,7 @@ async def research(query: str, timeout: float = 60.0, api_key: str | None = None
             "engine": "google_maps",
             "q": query,
             "type": "search",
-            "hl": "it",
+            "hl": lang or "it",
         },
         timeout=timeout,
         api_key=api_key,

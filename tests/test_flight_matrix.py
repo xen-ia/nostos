@@ -3,7 +3,7 @@ import logging
 
 from src.core.models import (
     DepartureAirports,
-    EmailContent,
+    LetterContent,
     ResolvedDestinations,
     ResolvedPlace,
     TripIntent,
@@ -20,21 +20,13 @@ INTENT = TripIntent(
     style=["autentico"],
 )
 
-EMAIL = EmailContent(
-    subject="Il tuo viaggio",
-    opening="Partiamo.",
-    understanding="Capisco che cerchi mare lontano dalle folle.",
-    resources=[{"name": "POI", "description": "", "price": "", "link": "https://example.com/poi"}],
-)
-
-
 def _make_llm(resolved=None, departures=None):
     responses = {}
     if resolved is not None:
         responses[ResolvedDestinations] = resolved
     if departures is not None:
         responses[DepartureAirports] = departures
-    return FakeLLM(response=INTENT, email_response=EMAIL, responses=responses)
+    return FakeLLM(response=INTENT, responses=responses)
 
 
 def _patch_searches(monkeypatch, *, flights_fn=None, maps_fn=None, places_fn=None):
@@ -105,7 +97,7 @@ async def test_region_trip_resolves_destination_and_logs_rationale(monkeypatch):
     await _run(trip, llm, db)
 
     assert any("Santa Lucia" in q for q in explore_queries), "explore must target resolved names"
-    assert place_queries[-1] == "hotels in Santa Lucia e Dominicus"
+    assert place_queries[-1] == "hotels in Dominicus"
 
     assert flight_args, "resolved arrival codes must enable probes"
     assert {a[0] for a in flight_args} == {"MXP", "FCO"}
@@ -116,8 +108,9 @@ async def test_region_trip_resolves_destination_and_logs_rationale(monkeypatch):
     assert package["geo"]["departure_codes"] == ["MXP", "FCO"]
     assert package["geo"]["skipped_flights_reason"] is None
 
-    email_prompts = [p for p, m in llm.calls if m is EmailContent]
-    assert email_prompts and "Focus scelto dal sistema: Mare tranquillo" in email_prompts[0]
+    letter_prompts = [p for p, m in llm.calls if m is LetterContent]
+    assert letter_prompts and "mare e relax" in letter_prompts[0]
+    assert "Mare tranquillo" in package["geo"]["resolve_rationale"]
 
 
 async def test_stay_preference_steers_places_query(monkeypatch):
@@ -131,7 +124,7 @@ async def test_stay_preference_steers_places_query(monkeypatch):
     _patch_searches(monkeypatch, places_fn=fake_places)
     await _run(trip, _make_llm(), FakeDatabase())
 
-    assert place_queries[-1] == "agriturismo stays in Caraibi"
+    assert place_queries == ["agriturismo stays in Caraibi", "hotels in Caraibi"]
 
 
 # --- Flight decision: the LLM decides per trip (needs_flights), code only executes ---
@@ -143,7 +136,7 @@ async def test_van_trip_skips_all_flight_probes(monkeypatch):
     intent = TripIntent(destination="Caraibi", departure_airport_code="MXP",
                         destination_airport_code="HND", travel_mode="van_life",
                         needs_flights=False, flight_rationale="Van da casa, niente volo")
-    llm = FakeLLM(response=intent, email_response=EMAIL)
+    llm = FakeLLM(response=intent)
     calls = []
 
     async def fake_flights(*args, **kwargs):
@@ -161,12 +154,23 @@ async def test_van_trip_skips_all_flight_probes(monkeypatch):
 
 
 async def test_missing_airports_after_geo_planning_skips_probes(monkeypatch):
+    from src.core.models import LetterContent
+
     trip = make_trip(
         destination=None, departure_location=None,
         start_date="2026-09-01", end_date="2026-09-10",
     )
     intent = TripIntent(destination=None)
-    llm = FakeLLM(response=intent, email_response=EMAIL)  # geo defaults: no resolutions, no codes
+    llm = FakeLLM(response=intent, letter_responses=[LetterContent(
+        subject="Viaggio",
+        opening="Arrivi senza voli diretti e la strada si apre davanti a te.",
+        moments=[
+            {"prose": "la hall profuma di legno e caffè mentre le camere luminose si affacciano sul cortile interno pieno di piante e silenzio",
+             "place_links": ["https://example.com/hotel"]},
+            {"prose": "la colazione arriva con pane caldo e marmellata mentre il giardino esterno accoglie gli ospiti tra ombra e tavoli bianchi",
+             "place_links": ["https://example.com/hotel-y"]},
+        ],
+        closing="Ne parliamo insieme.")])  # geo defaults: no resolutions, no codes
     calls = []
 
     async def fake_flights(*args, **kwargs):
@@ -174,7 +178,8 @@ async def test_missing_airports_after_geo_planning_skips_probes(monkeypatch):
         return []
 
     async def fake_places(**kwargs):
-        return [{"name": "POI", "price_per_night_eur": 90, "link": "https://example.com/poi"}]
+        return [{"name": "Hotel X", "price_per_night_eur": 90, "link": "https://example.com/hotel"},
+                {"name": "Hotel Y", "price_per_night_eur": 70, "link": "https://example.com/hotel-y"}]
 
     _patch_searches(monkeypatch, flights_fn=fake_flights, places_fn=fake_places)
     db = FakeDatabase()
@@ -194,7 +199,6 @@ async def test_empty_departure_codes_with_resolved_arrivals_skip_probes(monkeypa
     )
     llm = FakeLLM(
         response=intent,
-        email_response=EMAIL,
         responses={
             ResolvedDestinations: ResolvedDestinations(
                 destinations=[ResolvedPlace(name="Santa Lucia", country="Cuba", airport_code="UVF")],
@@ -271,7 +275,6 @@ async def test_absent_dates_still_use_period_plan_windows(monkeypatch):
     trip = make_trip(start_date=None, end_date=None)
     llm = FakeLLM(
         response=INTENT,
-        email_response=EMAIL,
         responses={PeriodPlan: PeriodPlan(windows=[
             {"start": w1_start, "end": w1_end},
             {"start": w2_start, "end": w2_end},
@@ -440,7 +443,6 @@ async def test_cheapest_flight_across_windows_wins(monkeypatch):
     trip = make_trip(start_date=None, end_date=None)
     llm = FakeLLM(
         response=INTENT,
-        email_response=EMAIL,
         responses={PeriodPlan: PeriodPlan(windows=[
             {"start": "2026-09-01", "end": "2026-09-15"},
             {"start": "2026-10-01", "end": "2026-10-15"},

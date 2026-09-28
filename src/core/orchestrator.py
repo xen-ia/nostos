@@ -1,7 +1,6 @@
 """TripOrchestrator: end-to-end trip pipeline (intent -> research -> email)."""
 import asyncio
 import logging
-import re
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -16,28 +15,26 @@ from src.services.apis.email import (
     SIGNATURE_NAME,
     SIGNATURE_ROLE,
     EmailSender,
+    _strip_raw_urls,
     build_html_email,
 )
 from src.infrastructure.database import Database
 from src.core.models import (
     Curation,
     DepartureAirports,
-    EmailContent,
     PeriodPlan,
     ResolvedDestinations,
     TargetQueries,
     TripIntent,
-    TripPlan,
 )
 from src.core.prompts import (
     build_curation_prompt,
-    build_email_prompt,
     build_geo_prompt,
     build_intent_prompt,
     build_period_prompt,
     build_target_prompt,
 )
-from src.core.validation import build_allowed_resources, sanitize_windows, validate_resources
+from src.core.validation import build_allowed_resources, sanitize_windows
 from src.core.decision_router import route_trip
 from src.core.decision_scoring import pick_best_flight, pick_top_pois
 from src.services.apis.decisions import build_decision_client
@@ -47,7 +44,8 @@ logger = logging.getLogger("nostos.orchestrator")
 
 MAX_WINDOWS = 2
 MAX_TARGET_QUERIES = 4
-CORPUS_CAP = 8
+CORPUS_CAP = 24
+MIN_MAPS_RATING = 3.5
 MAX_FLIGHT_PROBES = 12
 MAX_DEPARTURE_AIRPORTS = 4
 MAX_RESOLVED_DESTINATIONS = 2
@@ -56,37 +54,15 @@ FLEXIBLE_WINDOW_SHIFT_DAYS = 7
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Com'è andata? Lasciaci un feedback."
+DRAFT_NOTE = ("Questa è una prima bozza composta da Xen-IA sui dati di oggi: "
+              "il viaggio vero lo definiamo insieme al passo successivo.")
+
+CTA = "Il prossimo passo è umano: dimmi cosa cambiare e ne parliamo insieme."
 
 JUNK_DOMAINS = frozenset({
     "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
     "youtube.com", "youtu.be",
 })
-
-#: Numbered-corpus IDs (e.g. [F0], [M12], [P3]) the LLM echoes into EmailContent
-#: text fields. Stripped post-validation in _compose_email; the ID plus at most
-#: one adjacent space goes, preferring the trailing one ("[F0] X" -> "X").
-_BRACKET_ID_RE = re.compile(r"\[(?:F|M|P)\d+\] ?| ?\[(?:F|M|P)\d+\]")
-
-
-def _strip_bracket_id(text: str | None) -> str:
-    """Remove leaked corpus IDs from a single text field."""
-    return _BRACKET_ID_RE.sub("", text or "").strip()
-
-
-def strip_bracket_ids(content: dict) -> dict:
-    """Remove leaked corpus IDs from opening/understanding and every resource
-    name/description/price. Runs after validation (IDs never affect grounding)
-    and before rendering, so both HTML and text builders receive clean copy."""
-    for field in ("opening", "understanding"):
-        if content.get(field):
-            content[field] = _strip_bracket_id(content[field])
-    for resource in content.get("resources", []):
-        for field in ("name", "description", "price"):
-            if resource.get(field):
-                resource[field] = _strip_bracket_id(resource[field])
-    return content
-
 
 def _is_junk_link(link: str | None) -> bool:
     """True for social/video links that must never reach an email."""
@@ -220,6 +196,9 @@ class TripOrchestrator:
                 jev_needs_flights = jev_decisions.get("needs_flights")
                 if isinstance(jev_needs_flights, bool):
                     overrides["needs_flights"] = jev_needs_flights
+                jev_budget = jev_decisions.get("budget_sensitive")
+                if isinstance(jev_budget, bool):
+                    overrides["budget_sensitive"] = jev_budget
                 if overrides:
                     search_intent = intent.model_copy(update=overrides)
 
@@ -228,14 +207,15 @@ class TripOrchestrator:
                 resolved, departure_codes = await self._geo_plan(trip, intent)
                 tool_calls: list[dict] = []
                 destination = self._effective_destination(trip, intent, resolved)
-                anchors = await self._explore(destination, tool_calls, resolved=resolved)
-                targeted = await self._target(trip, intent, anchors)
+                lang = self._search_lang(resolved, destination)
+                anchors = await self._explore(destination, tool_calls, resolved=resolved, lang=lang)
+                targeted = await self._target(trip, search_intent, anchors, lang=lang)
                 research = await self._execute_searches(
                     trip, search_intent, targeted, windows, anchors, tool_calls,
-                    resolved=resolved, departure_codes=departure_codes,
+                    resolved=resolved, departure_codes=departure_codes, lang=lang,
                 )
                 if jev_active and tool_calls_jev is not None:
-                    self._apply_jev_scores(research, jev_decisions)
+                    await self._apply_jev_scores(decision_client, trip, research, jev_decisions)
                     research["tool_calls"].append(tool_calls_jev)
 
             async with self._timed("curate+compose"):
@@ -245,9 +225,7 @@ class TripOrchestrator:
                         "only a flight was found: not enough for a useful email, trip aborted without sending"
                     )
                 research["curated"] = curated
-                trip_plan = await self._plan_itinerary(trip, intent, curated)
-                research["trip_plan"] = trip_plan
-                email_content, body_text, body_html, package = await self._compose_email(trip, intent, research)
+                email_content, body_text, body_html, package = await self._compose_letter(trip, intent, research)
 
             async with self._timed("save_history"):
                 await self._save_history(trip, email_content, body_text, package)
@@ -305,58 +283,81 @@ class TripOrchestrator:
         )
 
     @staticmethod
+    def _dream_resources(curated: dict) -> list[dict]:
+        """Deterministic grounding list from curated SerpAPI data (never LLM
+        prose): names/links/prices come from research, descriptions stay empty
+        because the dream prose lives in scenes. Feeds cards_by_link, the
+        rental filter, the appendix shown-computation and the text twin."""
+        resources: list[dict] = []
+        for f in curated.get("flights", []):
+            if not f.get("link"):
+                continue
+            name = (f"Volo {(f.get('airline') or '').strip()} · "
+                    f"{(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}").strip()
+            price = f.get("price_eur")
+            resources.append({
+                "name": name or "Volo",
+                "description": "",
+                "price": f"{price} EUR" if isinstance(price, (int, float)) else "",
+                "link": f["link"],
+            })
+        for m in curated.get("maps", []):
+            if not m.get("link"):
+                continue
+            resources.append({"name": m.get("name") or "Luogo", "description": "",
+                              "price": "", "link": m["link"]})
+        for p in curated.get("places", []):
+            if not p.get("link"):
+                continue
+            price = p.get("price_per_night_eur")
+            entry = {"name": p.get("name") or "Alloggio", "description": "",
+                     "price": f"{price} EUR/notte" if isinstance(price, (int, float)) else "",
+                     "link": p["link"]}
+            if p.get("rental"):
+                entry["rental"] = True
+            resources.append(entry)
+        return resources
+
+    @staticmethod
     def _compose_body_text(email_content: dict) -> str:
-        lines = [email_content["opening"], "", email_content["understanding"], ""]
-        smap = email_content.get("sections_map", {})
-        flight_links = set(smap.get("flights", []))
-        resources = email_content.get("resources", [])
-        flight_items = [r for r in resources if r.get("link") in flight_links]
-        hero_link = next((r["link"] for r in flight_items if r.get("link")), None)
-        if flight_items:
-            lines.append("Come arrivare:")
-            first = flight_items[0]
-            flight_line = first["name"]
-            if first.get("price"):
-                flight_line += f" — {first['price']}"
-            lines.append(flight_line)
-            lines.append(first["link"])
+        """Letter mirror of the HTML email: opening, draft note, moments
+        (prose + indented links), the named 'I luoghi' list, rental, sources,
+        then the closing-as-cta/honest_note/signature tail. No flat resource
+        list, no phases, no travel box."""
+        lines: list[str] = []
+        if (email_content.get("opening") or "").strip():
+            lines.append(email_content["opening"].strip())
             lines.append("")
-        # Travel mode labels/descriptions mirror the HTML travel box one-liners.
+        if (email_content.get("draft_note") or "").strip():
+            lines.append(email_content["draft_note"].strip())
+            lines.append("")
+        resources = email_content.get("resources", [])
+        by_link = {r.get("link"): r for r in resources if r.get("link")}
+        for moment in email_content.get("moments", []):
+            prose = _strip_raw_urls(moment.get("prose") or "")
+            if prose:
+                lines.append(prose)
+            for link in moment.get("place_links", []):
+                if link in by_link:
+                    lines.append(f"   {link}")
+            lines.append("")
+        named = [p for p in email_content.get("places", []) or [] if p.get("link")]
+        if named:
+            lines.append("I luoghi:")
+            for place in named:
+                entry = (place.get("name") or "").strip()
+                if (place.get("price") or "").strip():
+                    entry += f" — {place['price'].strip()}"
+                lines.append(entry)
+                lines.append(f"   {place['link']}")
+            lines.append("")
+        smap = email_content.get("sections_map", {})
         travel_mode = email_content.get("travel_mode")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
         is_van = travel_mode_lower == "van_life" or (email_content.get("accommodation_style") or "").lower() == "van"
-        base_listed = [r for r in resources if r.get("link") != hero_link] if hero_link else list(resources)
         place_links = set(smap.get("places", []))
-        rentals = [r for r in base_listed
+        rentals = [r for r in resources
                    if r.get("rental") and r.get("link") in place_links][:2] if is_van else []
-        rental_links = {r.get("link") for r in rentals}
-        lines.append("Punti di partenza:")
-        listed = [r for r in base_listed if r.get("link") not in rental_links]
-        for i, item in enumerate(listed, 1):
-            entry = f"{i}. {item['name']}"
-            if item.get("price"):
-                entry += f" — {item['price']}"
-            lines.append(entry)
-            if item.get("description"):
-                lines.append(f"   {item['description']}")
-            lines.append(f"   {item['link']}")
-
-        # Travel box one-liner mirroring the HTML hierarchy (no Mezzi line:
-        # mobility info lives in the LLM prose, a bare vehicle list makes no sense).
-        # Neutral one-liners only: specifics come from grounded resource text.
-        mode_labels = {
-            "road_trip": "Come muoversi in loco",
-            "van_life": "Vita in van",
-            "sailing": "Navigazione",
-        }
-        mode_descriptions = {
-            "road_trip": "Tappe giornaliere in auto, strada facendo.",
-            "van_life": "Itinerario su strada, pernottamenti a bordo.",
-            "sailing": "Rotte costiere in barca, tappe a terra.",
-        }
-        lines.append("")
-        if travel_mode_lower in mode_labels:
-            lines.append(f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}")
         if rentals:
             lines.append("")
             lines.append("Dove noleggiare il van:")
@@ -369,24 +370,9 @@ class TripOrchestrator:
                     lines.append(f"   {item['description']}")
                 lines.append(f"   {item['link']}")
 
-        itinerary_days = email_content.get("itinerary_days", [])
-        if itinerary_days:
-            lines.append("L'itinerario:")
-            names_by_link = {r.get("link"): r.get("name") for r in email_content.get("resources", [])}
-            for day in itinerary_days:
-                lines.append(day.get("day_label", ""))
-                for link in day.get("links") or []:
-                    if link in names_by_link:
-                        lines.append(f"- {names_by_link[link]}")
-                if day.get("transition"):
-                    lines.append(f"  {day['transition']}")
-            lines.append("")
-
         appendix = email_content.get("appendix", {})
         if appendix:
             shown = {r.get("link") for r in resources if r.get("link")}
-            if hero_link:
-                shown.add(hero_link)
             urls: list[str] = []
             for _label, items in appendix.get("groups", []):
                 for i in items or []:
@@ -404,9 +390,9 @@ class TripOrchestrator:
                 lines.append("Fonti:")
                 lines.extend(urls)
         lines.append("")
-        lines.append(email_content["cta"])
+        lines.append(email_content.get("closing") or email_content.get("cta") or "")
         lines.append("")
-        lines.append(email_content["honest_note"])
+        lines.append(email_content.get("honest_note") or "")
         lines.append("")
         lines.append(SIGNATURE_GREETING)
         lines.append(SIGNATURE_NAME)
@@ -479,16 +465,34 @@ class TripOrchestrator:
                 windows.append(candidate)
         return windows[:3]
 
+    @staticmethod
+    def _search_lang(resolved: ResolvedDestinations | None, destination: str | None) -> str:
+        """SerpAPI hl + query language: Italian at home, French in francophone
+        countries, English everywhere else."""
+        from src.services.tools.language import search_language
+
+        countries = [p.country for p in (resolved.destinations if resolved else []) if p.country]
+        if destination:
+            countries.append(destination)
+        return search_language(countries)
+
     async def _explore(
         self,
         destination: str | None,
         tool_calls: list[dict],
         resolved: ResolvedDestinations | None = None,
+        lang: str = "it",
     ) -> list[dict]:
         """One explore query per resolved destination (never the joined string:
         joining two cities with "e" breaks the search). When the resolved list
         is empty, fall back to the effective destination string. If total
         anchors are still empty, one plain fallback query per destination."""
+        templates = {
+            "fr": ("quartiers et lieux clés à {name}", "choses à voir à {name}"),
+            "en": ("key neighborhoods and places in {name}", "things to see in {name}"),
+        }
+        explore_q, fallback_q = templates.get(lang, ("quartieri e luoghi chiave in {name}",
+                                                     "cose da vedere a {name}"))
         names = [p.name for p in (resolved.destinations if resolved else []) if p.name]
         if not names and destination:
             names = [destination]
@@ -496,9 +500,10 @@ class TripOrchestrator:
             return []
         anchors: list[dict] = []
         for name in names:
-            query = f"quartieri e luoghi chiave in {name}"
+            query = explore_q.format(name=name)
             try:
-                res = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key)
+                res = await maps.research(query, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key,
+                                          lang=lang)
             except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
                 logger.warning("google_maps explore: error %s: %s", type(exc).__name__, exc)
                 tool_calls.append({"engine": "google_maps", "params": {"q": query},
@@ -508,10 +513,10 @@ class TripOrchestrator:
             anchors.extend(res)
         if not anchors:
             for name in names:
-                fallback = f"cose da vedere a {name}"
+                fallback = fallback_q.format(name=name)
                 try:
                     res = await maps.research(fallback, timeout=self._serpapi_timeout,
-                                              api_key=self._serpapi_api_key)
+                                              api_key=self._serpapi_api_key, lang=lang)
                 except Exception as exc:  # noqa: BLE001 — exploration must never abort the trip
                     logger.warning("google_maps explore fallback: error %s: %s", type(exc).__name__, exc)
                     tool_calls.append({"engine": "google_maps", "params": {"q": fallback},
@@ -521,14 +526,15 @@ class TripOrchestrator:
                 anchors.extend(res)
         return anchors
 
-    async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict]) -> list[str]:
+    async def _target(self, trip: TripResponse, intent: TripIntent, anchors: list[dict],
+                      lang: str = "it") -> list[str]:
         if not anchors:
             return []
         anchors_block = "\n".join(
             f"- {a.get('name')} ({a.get('type')}) {a.get('address') or ''}".strip() for a in anchors[:CORPUS_CAP]
         )
-        plan = await self._llm.extract(build_target_prompt(trip, intent, anchors_block), TargetQueries)
-        return [q.query for q in plan.queries][:MAX_TARGET_QUERIES]
+        plan = await self._llm.extract(build_target_prompt(trip, intent, anchors_block, lang=lang), TargetQueries)
+        return [(q.query, q.based_on) for q in plan.queries][:MAX_TARGET_QUERIES]
 
     def _log_call(self, tool_calls: list[dict], engine: str, params: dict, results: list[dict]) -> None:
         tool_calls.append({"engine": engine, "params": params, "result_count": len(results)})
@@ -571,6 +577,7 @@ class TripOrchestrator:
         tool_calls: list[dict],
         resolved: ResolvedDestinations,
         departure_codes: list[str],
+        lang: str = "it",
     ) -> dict:
         destination = self._effective_destination(trip, intent, resolved)
         errors: list[Exception] = []
@@ -587,11 +594,22 @@ class TripOrchestrator:
             return res
 
         # Targeted queries go to maps verbatim: the model already writes mode-aware queries.
-        maps_results = await asyncio.gather(*(
-            guarded(maps.research(q, timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-                    "google_maps", {"q": q})
-            for q in targeted_queries
-        ))
+        # Empty results retry once against the anchor + destination (over-specific
+        # queries in the wrong language are the usual cause, not missing places).
+        async def targeted_search(item: tuple[str, str]) -> list[dict]:
+            query, anchor = item
+            res = await guarded(maps.research(query, timeout=self._serpapi_timeout,
+                                              api_key=self._serpapi_api_key, lang=lang),
+                                "google_maps", {"q": query})
+            if not res and anchor and destination:
+                retry = f"{anchor} {destination}"
+                logger.info("google_maps: empty for targeted query, retrying anchor '%s'", retry)
+                res = await guarded(maps.research(retry, timeout=self._serpapi_timeout,
+                                                  api_key=self._serpapi_api_key, lang=lang),
+                                    "google_maps", {"q": retry})
+            return res
+
+        maps_results = await asyncio.gather(*(targeted_search(t) for t in targeted_queries))
 
         # Flight matrix: the LLM decides per trip (intent.needs_flights); code only executes.
         # Legacy form travel_mode is NOT consulted: a van rented on arrival still needs a flight.
@@ -644,29 +662,38 @@ class TripOrchestrator:
         check_in = trip.start_date or winning_window[0]
         check_out = trip.end_date or winning_window[1]
 
-        # Build targeted places query based on travel_mode and accommodation_style
-        places_query = self._build_places_query(destination, intent, trip)
-        stays = await guarded(
-            places.search(destination=destination, query=places_query, check_in_date=check_in, check_out_date=check_out,
-                          timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-            "google_hotels", {"q": places_query, "check_in_date": check_in, "check_out_date": check_out},
-        )
-        if not stays and destination and places_query == f"campeggio {destination}":
-            logger.info("google_hotels: empty/error for van query, retrying alternate campsite in %s", destination)
-            alt_query = f"campsite {destination}"
-            stays = await guarded(
-                places.search(destination=destination, query=alt_query,
-                              check_in_date=check_in, check_out_date=check_out,
+        # Targeted accommodation: one primary + one generic query per resolved
+        # destination, all in parallel (never the joined "A e B" string: it
+        # dilutes both searches). The generic side doubles as the old fallback.
+        stay_names = [p.name for p in resolved.destinations if p.name]
+        if not stay_names and destination:
+            stay_names = [destination]
+        stay_queries: list[tuple[str, str]] = []
+        for name in stay_names[:2]:
+            primary = self._build_places_query(name, intent, trip)
+            stay_queries.append((name, primary))
+            generic = f"hotels in {name}"
+            if primary != generic:
+                stay_queries.append((name, generic))
+
+        async def _stay_search(args: tuple[str, str]) -> list[dict]:
+            name, q = args
+            return await guarded(
+                places.search(destination=name, query=q,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
-                "google_hotels", {"q": alt_query, "check_in_date": check_in,
-                                  "check_out_date": check_out},
+                "google_hotels", {"q": q, "check_in_date": check_in, "check_out_date": check_out},
             )
+
+        stays_lists = await asyncio.gather(*(_stay_search(a) for a in stay_queries))
+        stays = [s for lst in stays_lists for s in lst]
         if not stays:
-            logger.info("google_hotels: empty for mode query, retrying generic hotels in %s", destination)
-            retry_query = f"hotels in {destination}" if destination else "hotels"
+            logger.info("google_hotels: empty for mode queries, retrying generic hotels")
+            retry_query = f"hotels in {stay_names[0]}" if stay_names else "hotels"
             stays = await guarded(
-                places.search(destination=destination, query=retry_query,
-                              check_in_date=check_in, check_out_date=check_out,
+                places.search(destination=stay_names[0] if stay_names else destination,
+                              query=retry_query,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                 "google_hotels", {"q": retry_query, "check_in_date": check_in,
                                   "check_out_date": check_out},
@@ -675,18 +702,33 @@ class TripOrchestrator:
         # Van rental research: one extra places query, van trips only.
         travel_mode = (intent.travel_mode or "").lower()
         accommodation_style = (intent.accommodation_style or "").lower()
-        if destination and (travel_mode == "van_life" or accommodation_style == "van"):
-            rental_query = f"noleggio camper van {destination}"
+        rental_base = stay_names[0] if stay_names else destination
+        if rental_base and (travel_mode == "van_life" or accommodation_style == "van"):
+            rental_query = f"noleggio camper van {rental_base}"
             rentals = await guarded(
-                places.search(destination=destination, query=rental_query,
-                              check_in_date=check_in, check_out_date=check_out,
+                places.search(destination=rental_base, query=rental_query,
+                              check_in_date=check_in, check_out_date=check_out, lang=lang,
                               timeout=self._serpapi_timeout, api_key=self._serpapi_api_key),
                 "google_hotels", {"q": rental_query, "check_in_date": check_in,
                                   "check_out_date": check_out, "rental": True},
             )
             for rental in rentals:
                 rental["rental"] = True
-            stays = [*stays, *rentals]
+                existing = next((s for s in stays if s.get("link") and s.get("link") == rental.get("link")), None)
+                if existing is not None:
+                    existing["rental"] = True
+                else:
+                    stays = [*stays, rental]
+
+        # Budget steering: price-sensitive trips see cheapest stays first —
+        # curation and downstream picks read order as a soft preference.
+        if getattr(intent, "budget_sensitive", False) is True:
+            priced = [s for s in stays if isinstance(s.get("price_per_night_eur"), (int, float))]
+            unpriced = [s for s in stays if not isinstance(s.get("price_per_night_eur"), (int, float))]
+            priced.sort(key=lambda s: s["price_per_night_eur"])
+            if priced:
+                logger.info("stays sorted by price for budget-sensitive trip")
+                stays = [*priced, *unpriced]
 
         maps_items = [*anchors, *(i for lst in maps_results for i in lst)]
         linked_maps = [i for i in maps_items if i.get("link") and not _is_junk_link(i.get("link"))]
@@ -698,6 +740,7 @@ class TripOrchestrator:
             if generated is None:
                 continue
             it["link"] = generated
+            it["_rescued"] = True
             linked_maps.append(it)
             rescued_junk += 1
         if rescued_junk:
@@ -712,6 +755,7 @@ class TripOrchestrator:
                 nameless_drops.append(it.get("name"))
                 continue
             it["link"] = generated
+            it["_rescued"] = True
             linked_maps.append(it)
             rescued += 1
         if rescued:
@@ -719,10 +763,23 @@ class TripOrchestrator:
         if nameless_drops:
             logger.warning("maps corpus: dropped %d link-less entries: %s", len(nameless_drops), nameless_drops)
 
+        # Quality floor: rated-below-threshold POIs never reach curation.
+        floored = [i for i in linked_maps
+                   if not (isinstance(i.get("rating"), (int, float)) and i["rating"] < MIN_MAPS_RATING)]
+        if len(floored) < len(linked_maps):
+            logger.info("maps corpus: floored %d entries below rating %.1f",
+                        len(linked_maps) - len(floored), MIN_MAPS_RATING)
+        # Richness first: rated + described + real-link items win the cap;
+        # rescued (generated-link) entries fill remaining slots.
+        floored.sort(key=lambda i: ((i.get("rating") is not None)
+                                    + bool(i.get("description"))
+                                    + (not i.get("_rescued"))),
+                       reverse=True)
         corpus = {
             "flights": [{k: v for k, v in f.items() if k != "_meta"} for f in flights_list],
-            "maps": dedupe_cap(linked_maps, cap=CORPUS_CAP),
-            "places": stays,
+            "maps": [{k: v for k, v in i.items() if k != "_rescued"}
+                     for i in dedupe_cap(floored, cap=CORPUS_CAP)],
+            "places": dedupe_cap(stays, cap=2 * CORPUS_CAP),
         }
         geo_block = {
             "resolved": [p.model_dump() for p in resolved.destinations],
@@ -750,16 +807,62 @@ class TripOrchestrator:
             "geo": geo_block,
         }
 
-    @staticmethod
-    def _apply_jev_scores(research: dict, decisions: dict) -> None:
-        """Re-rank corpus flights/POIs with T3 scoring before _curate. The scores
-        map is empty (no per-item Jev scores yet): defaults keep order stable while
-        budget_sensitive already drives price weighting. Never invents links."""
+    #: Max candidates scored per Jev call (one parallel call covers the batch).
+    JEV_SCORE_BATCH = 20
+
+    async def _score_candidates(self, client, state: dict, items: list[dict]) -> dict[str, float]:
+        """One parallel Jev call scoring fit per candidate (noul each). Any
+        failure returns {} and callers fall back to neutral scores."""
+        batch = [it for it in items if it.get("link")][: self.JEV_SCORE_BATCH]
+        if not batch:
+            return {}
+        questions = {}
+        for i, it in enumerate(batch):
+            name = (it.get("name") or "unnamed").strip()
+            kind = (it.get("type") or "place").strip()
+            extra = f", rated {it['rating']}" if it.get("rating") else ""
+            questions[f"fit_{i}"] = {
+                "type": "noul",
+                "instructions": (f"Is this a good fit for the traveler's brief? "
+                                 f"{name} ({kind}{extra}). Answer yes only on clear fit."),
+            }
+        try:
+            raw = await client.decide(state, questions)
+        except Exception as exc:  # noqa: BLE001 — scoring must never abort the trip
+            logger.warning("jev scoring failed, neutral scores: %s", type(exc).__name__)
+            return {}
+        answers = raw.get("answers", {}) if isinstance(raw, dict) else {}
+        scores: dict[str, float] = {}
+        for i, it in enumerate(batch):
+            link = it.get("link") or ""
+            if not link:
+                continue
+            item = answers.get(f"fit_{i}", {})
+            p = item.get("noul", 0.5) if isinstance(item, dict) else 0.5
+            try:
+                p = float(p)
+            except (TypeError, ValueError):
+                p = 0.5
+            scores[link] = max(0.0, min(1.0, p))
+        return scores
+
+    async def _apply_jev_scores(self, client, trip: TripResponse, research: dict, decisions: dict) -> None:
+        """Re-rank corpus flights/POIs with real Jev fit scores before _curate.
+        Without a client (or on any error) scores stay neutral and order is
+        stable while budget_sensitive still drives price weighting."""
         budget_sensitive = decisions.get("budget_sensitive")
         if not isinstance(budget_sensitive, bool):
             budget_sensitive = False
         scores: dict[str, float] = {}
         corpus = research.get("corpus", {})
+        if client is not None:
+            from src.core.decision_router import build_router_state
+
+            state = build_router_state(trip)
+            maps_scores = await self._score_candidates(client, state, corpus.get("maps", []) or [])
+            stays_scores = await self._score_candidates(client, state, corpus.get("places", []) or [])
+            scores = {**maps_scores, **stays_scores}
+            research["tool_calls"].append({"engine": "jev-scorer", "scored": len(scores)})
         flights_list = corpus.get("flights", []) or []
         if flights_list:
             best = pick_best_flight(flights_list, scores, budget_sensitive)
@@ -768,6 +871,9 @@ class TripOrchestrator:
         maps_items = corpus.get("maps", []) or []
         if maps_items:
             corpus["maps"] = pick_top_pois(maps_items, scores, limit=len(maps_items))
+
+    #: Min distinct verified links cited across moments (richness retry below).
+    MIN_CITED_LINKS = 4
 
     #: Re-probe the winning flight combo once before compose: if the price moved
     #: up more than this fraction (or the link is gone), fall back to the next
@@ -876,71 +982,126 @@ class TripOrchestrator:
             }
         return curated
 
-    async def _plan_itinerary(self, trip: TripResponse, intent: TripIntent, curated: dict) -> TripPlan:
-        from src.core.models import TripPlan
-        from src.core.prompts import build_plan_prompt
-        from src.core.trip_plan import sanitize_plan
-        from datetime import date
-        if not trip.start_date or not trip.end_date:
-            return TripPlan()
-        try:
-            days = (date.fromisoformat(trip.end_date) - date.fromisoformat(trip.start_date)).days + 1
-        except ValueError:
-            return TripPlan()
-        if days <= 0:
-            return TripPlan()
-        try:
-            raw = await self._llm.extract(
-                build_plan_prompt(trip, intent,
-                                  self._render_flights(curated["flights"], numbered=True),
-                                  self._render_maps(curated["maps"], numbered=True),
-                                  self._render_places(curated["places"], numbered=True),
-                                  days),
-                TripPlan,
-            )
-            return sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
-        except Exception as exc:
-            logger.warning("trip plan skipped: %s: %s", type(exc).__name__, exc)
-            return TripPlan()
+    @staticmethod
+    def _letter_places(curated: dict, moments: list[dict]) -> list[dict]:
+        """Named places list (spec §4): moment-cited links first (names/prices
+        from curated data, deduped, never orphaned), then curated flights and
+        van rentals as entries. Task 3 renders this; interim it rides along."""
+        by_link: dict[str, dict] = {}
+        for f in curated.get("flights", []):
+            if not f.get("link"):
+                continue
+            name = (f"Volo {(f.get('airline') or '').strip()} · "
+                    f"{(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}").strip()
+            price = f.get("price_eur")
+            by_link[f["link"]] = {
+                "name": name or "Volo",
+                "price": f"{price} EUR" if isinstance(price, (int, float)) else "",
+                "link": f["link"],
+            }
+        for m in curated.get("maps", []):
+            if m.get("link"):
+                by_link[m["link"]] = {"name": m.get("name") or "Luogo", "price": "",
+                                      "link": m["link"]}
+        for p in curated.get("places", []):
+            if not p.get("link"):
+                continue
+            price = p.get("price_per_night_eur", p.get("price_eur"))
+            by_link[p["link"]] = {
+                "name": p.get("name") or "Alloggio",
+                "price": f"{price} EUR/notte" if isinstance(price, (int, float)) else "",
+                "link": p["link"],
+            }
+        places, seen = [], set()
+        for moment in moments:
+            for link in moment.get("place_links", []):
+                if link in seen or link not in by_link:
+                    continue
+                seen.add(link)
+                places.append(by_link[link])
+        for f in curated.get("flights", []):
+            link = f.get("link")
+            if link and link not in seen and link in by_link:
+                seen.add(link)
+                places.append(by_link[link])
+        for p in curated.get("places", []):
+            link = p.get("link")
+            if link and p.get("rental") and link not in seen and link in by_link:
+                seen.add(link)
+                places.append(by_link[link])
+        return places
 
-    async def _compose_email(
+    async def _compose_letter(
         self, trip: TripResponse, intent: TripIntent, research: dict
     ) -> tuple[dict, str, str, dict]:
+        from src.core.dream import find_new_proper_nouns, is_generic_scene
+        from src.core.models import LetterContent
+        from src.core.prompts import build_letter_prompt
+
         corpus, curated = research["corpus"], research["curated"]
-        trip_plan = research.get("trip_plan", TripPlan())
-        if trip_plan.days:
-            research["tool_calls"].append({"engine": "jev-itinerary", "days": len(trip_plan.days)})
-        else:
-            research["tool_calls"].append({"engine": "jev-itinerary", "skipped": True})
         allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
+        allowed_links = set(allowed.links)
+        known_names = [r.get("name") or "" for r in
+                       (curated["flights"] + curated["maps"] + curated["places"])]
+        lines = []
+        for f in curated["flights"]:
+            if f.get("link"):
+                lines.append(f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()} — {f['link']}")
+        for m in curated["maps"]:
+            if m.get("link"):
+                lines.append(f"{(m.get('name') or '').strip()} — {m['link']}")
+        for p in curated["places"]:
+            if p.get("link"):
+                extra = " (noleggio)" if p.get("rental") else ""
+                price_val = p.get("price_per_night_eur", p.get("price_eur"))
+                price = f" — {price_val} EUR/notte" if isinstance(price_val, (int, float)) else ""
+                lines.append(f"{(p.get('name') or '').strip()}{extra}{price} — {p['link']}")
+        prompt = build_letter_prompt(trip.free_text or "", intent, "\n".join(lines) or "nessuna risorsa verificata")
+        content = (await self._llm.extract(prompt, LetterContent, max_tokens=4096)).model_dump()
 
-        resolve_rationale = research.get("geo", {}).get("resolve_rationale", "")
-        prompt = build_email_prompt(intent,
-                                    self._render_flights(curated["flights"], numbered=True),
-                                    self._render_maps(curated["maps"], numbered=True),
-                                    self._render_places(curated["places"], numbered=True),
-                                    trip,
-                                    resolve_rationale=resolve_rationale)
-        content = (await self._llm.extract(prompt, EmailContent)).model_dump()
+        def _moment_ok(moment: dict) -> bool:
+            if is_generic_scene(moment.get("prose", "")):
+                return False
+            if any(link not in allowed_links for link in moment.get("place_links", [])):
+                return False
+            if find_new_proper_nouns(moment.get("prose", ""), known_names):
+                return False
+            return True
 
-        report = validate_resources(content["resources"], allowed)
-        if report.invalid or not content["resources"]:
-            logger.warning("invalid resources dropped: %s", [r.get("name") for r in report.invalid])
-            content["resources"] = report.valid
-            if not content["resources"]:
-                retry_prompt = prompt + "\n\nIMPORTANT: your previous answer cited resources not in the list and was rejected. Use ONLY the listed resources."
-                content = (await self._llm.extract(retry_prompt, EmailContent)).model_dump()
-                report = validate_resources(content["resources"], allowed)
-                content["resources"] = report.valid
-                if not content["resources"]:
-                    raise NoResourcesError("email composition could not ground any real resource")
-        content = self._ensure_flight_hero(content, curated)
-        content = self._apply_curated_flight_prices(content, curated)
-        content = self._clean_resource_prices(content)
-
+        moments = [m for m in content.get("moments", []) if _moment_ok(m)]
+        if len(moments) < len(content.get("moments", [])):
+            logger.info("letter retry: %d moments rejected, one specificity retry",
+                        len(content.get("moments", [])) - len(moments))
+            retry = (await self._llm.extract(
+                prompt + "\n\nIMPORTANT: alcuni momenti erano generici o citavano luoghi senza link. "
+                         "Riscrivi ogni momento con dettagli sensoriali concreti e link solo verificati.",
+                LetterContent, max_tokens=4096)).model_dump()
+            moments = [m for m in retry.get("moments", []) if _moment_ok(m)]
+            if moments:
+                content = retry
+        content["moments"] = moments
+        if len(moments) < 2:
+            raise NoResourcesError("letter has fewer than 2 valid moments: email not sent")
+        # Link richness: cite at least MIN_CITED_LINKS distinct verified links when
+        # the research offers them — otherwise the dream reads rich but links thin.
+        cited = {link for m in moments for link in m.get("place_links", []) if link in allowed_links}
+        if len(cited) < self.MIN_CITED_LINKS and len(allowed_links) >= self.MIN_CITED_LINKS:
+            logger.info("letter retry: only %d distinct links cited, one richness retry", len(cited))
+            retry = (await self._llm.extract(
+                prompt + "\n\nIMPORTANT: cita almeno 4 link verificati DISTINTI dalla lista, "
+                         "distribuiti tra i momenti. Non ripetere lo stesso link.",
+                LetterContent, max_tokens=4096)).model_dump()
+            rich = [m for m in retry.get("moments", []) if _moment_ok(m)]
+            rich_cited = {link for m in rich for link in m.get("place_links", []) if link in allowed_links}
+            if len(rich) >= 2 and len(rich_cited) > len(cited):
+                content, moments = retry, rich
+                content["moments"] = moments
+        # Deterministic grounding lists from curated research (never LLM prose).
+        content["resources"] = self._dream_resources(curated)
+        content["places"] = self._letter_places(curated, moments)
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
-        content = strip_bracket_ids(content)
+        content["draft_note"] = DRAFT_NOTE
         from src.core.feedback_token import make_token
         from src.settings import get_settings
 
@@ -953,34 +1114,26 @@ class TripOrchestrator:
             "places": [r["link"] for r in curated["places"] if r.get("link")],
             "maps": [r["link"] for r in curated["maps"] if r.get("link")],
         }
+        shown_links = {link for m in moments for link in m.get("place_links", []) if link}
         content["appendix"] = self._build_appendix(
             research,
-            exclude_links={r["link"] for r in content["resources"] if r.get("link")},
-            allowed_links=set(allowed.links),
+            exclude_links=shown_links,
+            allowed_links=allowed_links,
         )
         # Pass intent fields for email template sections
         content["travel_mode"] = intent.travel_mode
         content["mobility"] = intent.mobility_preferences
         content["accommodation_style"] = intent.accommodation_style
-        flight_links = [r["link"] for r in curated["flights"] if r.get("link")]
-        maps_links = [r["link"] for r in curated["maps"] if r.get("link")]
-        places_links = [r["link"] for r in curated["places"] if r.get("link")]
-        itinerary_days = []
-        for day in trip_plan.days:
-            links = ([flight_links[i] for i in day.flight_refs if i < len(flight_links)]
-                     + [maps_links[i] for i in day.poi_refs if i < len(maps_links)]
-                     + [places_links[i] for i in day.stay_refs if i < len(places_links)])
-            itinerary_days.append({"day_label": day.day_label, "links": links, "transition": day.transition})
-        content["itinerary_days"] = itinerary_days
-        body_text = self._compose_body_text(content)
         body_html = build_html_email(content)
+        body_text = self._compose_body_text(content)
         package = {
             "intent": intent.model_dump(),
             "geo": research.get("geo", {}),
             "corpus": corpus,
             "curated": curated,
             "curated_rationale": curated.get("rationale", ""),
-            "trip_plan": research.get("trip_plan", TripPlan()).model_dump(),
+            "letter_rationale": curated.get("rationale", ""),
+            "letter": {"moments": len(moments)},
             "tool_calls": research["tool_calls"],
         }
         return content, body_text, body_html, package
@@ -1038,88 +1191,3 @@ class TripOrchestrator:
             "groups": groups,
             "source_links": source_links,
         }
-
-    @staticmethod
-    def _render_flights(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no flights available"
-
-        def label(i: int) -> str:
-            return f"[F{i}] " if numbered else ""
-
-        def flight_line(i: int, it: dict) -> str:
-            price = it.get("price_eur")
-            price_txt = f", {price} EUR" if isinstance(price, (int, float)) else ""
-            return (f"{label(i)}{it.get('airline')}, {it.get('from')} -> {it.get('to')}, "
-                    f"departure {it.get('departure_date')}{price_txt} — {it.get('link')}")
-
-        return "\n".join(flight_line(i, it) for i, it in enumerate(items))
-
-    @staticmethod
-    def _render_maps(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no points of interest"
-
-        def label(i: int) -> str:
-            return f"[M{i}] " if numbered else ""
-
-        return "\n".join(
-            f"{label(i)}{it.get('name')} ({it.get('type')}, {it.get('rating')} stars) — {it.get('link')}"
-            for i, it in enumerate(items)
-        )
-
-    @staticmethod
-    def _render_places(items: list[dict], numbered: bool = False) -> str:
-        if not items:
-            return "no accommodations available"
-
-        def label(i: int) -> str:
-            return f"[P{i}] " if numbered else ""
-
-        def place_line(i: int, it: dict) -> str:
-            price = it.get("price_per_night_eur")
-            price_txt = f"{price} EUR/night" if isinstance(price, (int, float)) else "prezzo non indicato"
-            return f"{label(i)}{it.get('name')} — {price_txt} — {it.get('link')}"
-
-        return "\n".join(place_line(i, it) for i, it in enumerate(items))
-
-    @staticmethod
-    def _clean_resource_prices(content: dict) -> dict:
-        """Blank prices that are missing or leaked 'None ...' strings (SerpAPI
-        nulls echoed by the LLM), so neither HTML pills nor text lines print them."""
-        for resource in content.get("resources", []):
-            price = resource.get("price")
-            if not price or str(price).strip().lower().startswith("none"):
-                resource["price"] = ""
-        return content
-
-    @staticmethod
-    def _ensure_flight_hero(content: dict, curated: dict) -> dict:
-        """Deterministic hero guarantee: if the LLM cited no curated flight,
-        append one built from the winning researched flight (never invented:
-        name/date/price/link all come from SerpAPI data)."""
-        flight_links = {r.get("link") for r in content.get("resources", [])}
-        for f in curated.get("flights", []):
-            if not f.get("link") or f["link"] in flight_links:
-                continue
-            name = f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}".strip()
-            desc = f"Partenza {f['departure_date']}" if f.get("departure_date") else ""
-            price = f"{f['price_eur']} EUR" if isinstance(f.get("price_eur"), (int, float)) else ""
-            content.setdefault("resources", []).append(
-                {"name": name or "Volo", "description": desc, "price": price, "link": f["link"]})
-            logger.info("flight hero force-included from curated winner: %s", f["link"])
-            break
-        return content
-
-    @staticmethod
-    def _apply_curated_flight_prices(content: dict, curated: dict) -> dict:
-        """Overwrite flight price prose with researched numbers: the LLM writes
-        price text freely and validation only checks links, so figures can drift."""
-        by_link = {f.get("link"): f for f in curated.get("flights", []) if f.get("link")}
-        for resource in content.get("resources", []):
-            flight = by_link.get(resource.get("link"))
-            if flight is None:
-                continue
-            price = flight.get("price_eur")
-            resource["price"] = f"{price} EUR" if isinstance(price, (int, float)) else ""
-        return content

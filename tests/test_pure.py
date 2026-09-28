@@ -1,6 +1,6 @@
 from src.services.apis.email import _e, _render_card, build_html_email
 from src.core.orchestrator import TripOrchestrator
-from src.core.prompts import build_email_prompt, build_intent_prompt
+from src.core.prompts import build_intent_prompt
 from src.core.models import TripIntent
 from src.services.tools import _simplify, make_ollama_schema
 from src.services.tools.flights import _normalize as _normalize_flight
@@ -30,7 +30,7 @@ def test_render_card_without_optional_fields():
 def test_build_html_email_includes_escaped_parts():
     content = {
         "opening": 'Hello "world"',
-        "understanding": "<i>ok</i>",
+        "moments": [{"prose": "<i>ok</i>", "place_links": []}],
         "resources": [{"name": "X", "description": "d", "price": "p", "link": "https://x.com"}],
         "cta": "A presto",
         "honest_note": "Auto",
@@ -94,23 +94,31 @@ def test_simplify_anyof_nullable():
     assert out["type"] == ["string", "null"]
 
 
-def test_compose_body_text_formatting():
+def test_compose_body_text_letter_mirror():
     content = {
         "opening": "Ciao",
-        "understanding": "Ti ho capito",
+        "draft_note": "Prima bozza.",
         "resources": [
-            {"name": "Volo", "price": "320 EUR", "description": "Nonstop", "link": "https://x.com"},
-            {"name": "Hotel", "link": "https://y.com"},
+            {"name": "Volo ANA · MXP – HND", "price": "320 EUR", "description": "",
+             "link": "https://x.com"},
+            {"name": "Ryokan X", "price": "", "description": "", "link": "https://y.com"},
         ],
+        "sections_map": {"flights": ["https://x.com"], "maps": ["https://y.com"]},
+        "moments": [{"prose": "Luci calde e sale.", "place_links": ["https://y.com"]}],
+        "places": [{"name": "Volo ANA · MXP – HND", "price": "320 EUR", "link": "https://x.com"},
+                   {"name": "Ryokan X", "price": "", "link": "https://y.com"}],
+        "closing": "Facci sapere",
         "cta": "Facci sapere",
         "honest_note": "Auto",
     }
     text = TripOrchestrator._compose_body_text(content)
     assert text.startswith("Ciao")
-    assert "1. Volo" in text
-    assert "2. Hotel" in text
-    assert "https://x.com" in text
-    assert "320 EUR" in text
+    order = ["Ciao", "Prima bozza.", "Luci calde e sale.", "https://y.com",
+             "I luoghi:", "Volo ANA · MXP – HND — 320 EUR", "https://x.com",
+             "Facci sapere", "Auto"]
+    positions = [text.index(s) for s in order]
+    assert positions == sorted(positions), "twin strings must follow HTML order"
+    assert "L'itinerario:" not in text and "Punti di partenza:" not in text
 
 
 def test_build_intent_prompt_includes_structured_inputs():
@@ -136,20 +144,3 @@ def test_build_intent_prompt_travelers_type_missing():
     trip = make_trip(travelers_count=1, travelers_type=None)
     prompt = build_intent_prompt(trip)
     assert "Travelers type: not specified" in prompt
-
-
-def test_build_email_prompt_includes_structured_inputs():
-    trip = make_trip(budget_amount="1000 EUR", travel_mode="treno", stay_preference="b&b")
-    intent = TripIntent(destination="Tokyo", interests=["cibo"], travel_mode="treno", accommodation_style="hotel")
-    prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
-    assert "1000 EUR" in prompt
-    assert "treno" in prompt
-    assert "hotel" in prompt
-
-
-def test_build_email_prompt_includes_travelers_fields():
-    trip = make_trip(travelers_count=4, travelers_type="amici")
-    intent = TripIntent(destination="Tokyo", interests=["cibo"])
-    prompt = build_email_prompt(intent, "flights", "pois", "stays", trip)
-    assert "Travelers count: 4" in prompt
-    assert "Travelers type: amici" in prompt
