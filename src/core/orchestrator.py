@@ -221,7 +221,7 @@ class TripOrchestrator:
                         "only a flight was found: not enough for a useful email, trip aborted without sending"
                     )
                 research["curated"] = curated
-                email_content, body_text, body_html, package = await self._compose_dream(trip, intent, research)
+                email_content, body_text, body_html, package = await self._compose_letter(trip, intent, research)
 
             async with self._timed("save_history"):
                 await self._save_history(trip, email_content, body_text, package)
@@ -866,6 +866,160 @@ class TripOrchestrator:
                 "rationale": cur.rationale,
             }
         return curated
+
+    @staticmethod
+    def _letter_places(curated: dict, moments: list[dict]) -> list[dict]:
+        """Named places list (spec §4): moment-cited links first (names/prices
+        from curated data, deduped, never orphaned), then curated flights and
+        van rentals as entries. Task 3 renders this; interim it rides along."""
+        by_link: dict[str, dict] = {}
+        for f in curated.get("flights", []):
+            if not f.get("link"):
+                continue
+            name = (f"Volo {(f.get('airline') or '').strip()} · "
+                    f"{(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}").strip()
+            price = f.get("price_eur")
+            by_link[f["link"]] = {
+                "name": name or "Volo",
+                "price": f"{price} EUR" if isinstance(price, (int, float)) else "",
+                "link": f["link"],
+            }
+        for m in curated.get("maps", []):
+            if m.get("link"):
+                by_link[m["link"]] = {"name": m.get("name") or "Luogo", "price": "",
+                                      "link": m["link"]}
+        for p in curated.get("places", []):
+            if not p.get("link"):
+                continue
+            price = p.get("price_per_night_eur", p.get("price_eur"))
+            by_link[p["link"]] = {
+                "name": p.get("name") or "Alloggio",
+                "price": f"{price} EUR/notte" if isinstance(price, (int, float)) else "",
+                "link": p["link"],
+            }
+        places, seen = [], set()
+        for moment in moments:
+            for link in moment.get("place_links", []):
+                if link in seen or link not in by_link:
+                    continue
+                seen.add(link)
+                places.append(by_link[link])
+        for f in curated.get("flights", []):
+            link = f.get("link")
+            if link and link not in seen and link in by_link:
+                seen.add(link)
+                places.append(by_link[link])
+        for p in curated.get("places", []):
+            link = p.get("link")
+            if link and p.get("rental") and link not in seen and link in by_link:
+                seen.add(link)
+                places.append(by_link[link])
+        return places
+
+    async def _compose_letter(
+        self, trip: TripResponse, intent: TripIntent, research: dict
+    ) -> tuple[dict, str, str, dict]:
+        from src.core.dream import find_new_proper_nouns, is_generic_scene
+        from src.core.models import LetterContent
+        from src.core.prompts import build_letter_prompt
+
+        corpus, curated = research["corpus"], research["curated"]
+        allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
+        allowed_links = set(allowed.links)
+        known_names = [r.get("name") or "" for r in
+                       (curated["flights"] + curated["maps"] + curated["places"])]
+        lines = []
+        for f in curated["flights"]:
+            if f.get("link"):
+                lines.append(f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()} — {f['link']}")
+        for m in curated["maps"]:
+            if m.get("link"):
+                lines.append(f"{(m.get('name') or '').strip()} — {m['link']}")
+        for p in curated["places"]:
+            if p.get("link"):
+                extra = " (noleggio)" if p.get("rental") else ""
+                price_val = p.get("price_per_night_eur", p.get("price_eur"))
+                price = f" — {price_val} EUR/notte" if isinstance(price_val, (int, float)) else ""
+                lines.append(f"{(p.get('name') or '').strip()}{extra}{price} — {p['link']}")
+        prompt = build_letter_prompt(trip.free_text or "", intent, "\n".join(lines) or "nessuna risorsa verificata")
+        content = (await self._llm.extract(prompt, LetterContent, max_tokens=4096)).model_dump()
+
+        def _moment_ok(moment: dict) -> bool:
+            if is_generic_scene(moment.get("prose", "")):
+                return False
+            if any(link not in allowed_links for link in moment.get("place_links", [])):
+                return False
+            if find_new_proper_nouns(moment.get("prose", ""), known_names):
+                return False
+            return True
+
+        moments = [m for m in content.get("moments", []) if _moment_ok(m)]
+        if len(moments) < len(content.get("moments", [])):
+            logger.info("letter retry: %d moments rejected, one specificity retry",
+                        len(content.get("moments", [])) - len(moments))
+            retry = (await self._llm.extract(
+                prompt + "\n\nIMPORTANT: alcuni momenti erano generici o citavano luoghi senza link. "
+                         "Riscrivi ogni momento con dettagli sensoriali concreti e link solo verificati.",
+                LetterContent, max_tokens=4096)).model_dump()
+            moments = [m for m in retry.get("moments", []) if _moment_ok(m)]
+            if moments:
+                content = retry
+        content["moments"] = moments
+        if len(moments) < 2:
+            raise NoResourcesError("letter has fewer than 2 valid moments: email not sent")
+        # Deterministic grounding lists from curated research (never LLM prose).
+        content["resources"] = self._dream_resources(curated)
+        content["places"] = self._letter_places(curated, moments)
+        # Interim shim (Task 3 owns the real twin): expose moments through the
+        # existing scenes-shaped renderers so the current template + text twin
+        # carry the letter prose until the letter template lands.
+        content["scenes"] = [
+            {"title": "", "prose": m.get("prose", ""),
+             "place_links": m.get("place_links", [])}
+            for m in moments
+        ]
+        content["honest_note"] = HONEST_NOTE
+        content["cta"] = CTA
+        content["draft_note"] = DRAFT_NOTE
+        content["trip_summary"] = format_trip_summary(
+            trip.destination, trip.start_date, trip.end_date,
+            trip.travelers_count, trip.travelers_type,
+        )
+        from src.core.feedback_token import make_token
+        from src.settings import get_settings
+
+        settings = get_settings()
+        base = getattr(settings, "feedback_base_url", "https://xen-ia.github.io/nostos")
+        token = make_token(self._trip_id, settings.api_token or "dev-secret", ttl_days=settings.feedback_token_ttl_days)
+        content["feedback_link"] = f"{base}/feedback.html?trip_id={self._trip_id}&token={token}"
+        content["sections_map"] = {
+            "flights": [r["link"] for r in curated["flights"] if r.get("link")],
+            "places": [r["link"] for r in curated["places"] if r.get("link")],
+            "maps": [r["link"] for r in curated["maps"] if r.get("link")],
+        }
+        shown_links = {link for m in moments for link in m.get("place_links", []) if link}
+        content["appendix"] = self._build_appendix(
+            research,
+            exclude_links=shown_links,
+            allowed_links=allowed_links,
+        )
+        # Pass intent fields for email template sections
+        content["travel_mode"] = intent.travel_mode
+        content["mobility"] = intent.mobility_preferences
+        content["accommodation_style"] = intent.accommodation_style
+        body_html = build_html_email(content)
+        body_text = self._compose_body_text(content)
+        package = {
+            "intent": intent.model_dump(),
+            "geo": research.get("geo", {}),
+            "corpus": corpus,
+            "curated": curated,
+            "curated_rationale": curated.get("rationale", ""),
+            "letter_rationale": curated.get("rationale", ""),
+            "letter": {"moments": len(moments)},
+            "tool_calls": research["tool_calls"],
+        }
+        return content, body_text, body_html, package
 
     async def _compose_dream(
         self, trip: TripResponse, intent: TripIntent, research: dict
