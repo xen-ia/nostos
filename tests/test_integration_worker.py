@@ -18,7 +18,7 @@ import src.infrastructure.worker as worker_module  # noqa: E402
 from src.core.schemas import TripStatus  # noqa: E402
 from src.services.trip_store import TripStore  # noqa: E402
 from tests.fakes import FakeEmailSender, FakeLLM, make_trip  # noqa: E402
-from tests.test_orchestrator import EMAIL, INTENT  # noqa: E402
+from tests.test_orchestrator import INTENT  # noqa: E402
 
 
 def _services_up() -> bool:
@@ -76,7 +76,7 @@ async def test_end_to_end_worker_done(monkeypatch, test_env):
     arq = await create_pool(RedisSettings.from_dsn(os.environ["NOSTOS_REDIS_URL"]))
     await arq.enqueue_job("run_trip_job", trip.id, _queue_name=worker_module.QUEUE_NAME)
 
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
     email = FakeEmailSender()
 
     def fake_build_llm(settings):

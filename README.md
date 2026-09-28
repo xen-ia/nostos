@@ -150,8 +150,8 @@ Follow a trip and you will meet every layer:
      accommodations (`src/services/tools/`). A category with no valid results
      is dropped; if everything comes back empty, the trip stops and no email
      is sent.
-   - **Composition** — a second LLM call writes the email (`EmailContent`
-     schema) against a strict editorial voice (`src/core/prompts/system_prompt.md`),
+    - **Composition** — a second LLM call writes the email (`DreamContent`
+      schema via `_compose_dream`) against a strict editorial voice (`src/core/prompts/system_prompt.md`),
      using *only* the researched resources — nothing invented.
    - **Delivery** — Resend sends the email. The history is persisted in
      Postgres with status, the model used, and the app version.

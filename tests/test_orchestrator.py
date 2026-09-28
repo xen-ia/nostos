@@ -1,4 +1,4 @@
-from src.core.models import Curation, EmailContent, PeriodPlan, TripIntent
+from src.core.models import Curation, PeriodPlan, TripIntent
 from src.core.orchestrator import TripOrchestrator
 from src.core.schemas import TripStatus
 from tests.fakes import FakeDatabase, FakeEmailSender, FakeLLM, make_store, make_trip
@@ -12,20 +12,12 @@ INTENT = TripIntent(
     pace="moderato",
 )
 
-EMAIL = EmailContent(
-    subject="Il tuo viaggio a Tokyo",
-    opening="Tokyo in settembre ha un che di magico.",
-    understanding="Capisco che cerchi cibo locale lontano dalle folle.",
-    resources=[{"name": "Senso-ji", "description": "Tempio storico", "price": "", "link": "https://example.com/poi"}],
-)
-
-
 async def _run(orchestrator):
     await orchestrator.run()
 
 
 def _make_llm():
-    return FakeLLM(response=INTENT, email_response=EMAIL)
+    return FakeLLM(response=INTENT)
 
 
 async def test_happy_path_sends_email_and_saves_history(monkeypatch):
@@ -233,7 +225,6 @@ async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monke
     trip = await store.create(make_trip(start_date=None, end_date=None))
     llm = FakeLLM(
         response=INTENT,
-        email_response=EMAIL,
         responses={PeriodPlan: PeriodPlan(windows=[
             {"start": w1_start, "end": w1_end, "rationale": "mild"},
             {"start": w2_start, "end": w2_end, "rationale": "cheaper"},
@@ -275,7 +266,7 @@ async def test_no_dates_triggers_period_plan_and_multi_window_flight_probe(monke
 async def test_unusable_period_plan_falls_back(monkeypatch):
     store = make_store()
     trip = await store.create(make_trip(start_date=None, end_date=None))
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)  # default PeriodPlan(windows=[])
+    llm = FakeLLM(response=INTENT)  # default PeriodPlan(windows=[])
 
     seen = []
 
@@ -304,7 +295,7 @@ async def test_unusable_period_plan_falls_back(monkeypatch):
 async def test_start_only_trip_probes_one_way_flight_without_period_llm_call(monkeypatch):
     store = make_store()
     trip = await store.create(make_trip(end_date=None))
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
 
     flight_calls = []
     stay_kwargs = []
@@ -343,7 +334,7 @@ async def test_start_only_trip_probes_one_way_flight_without_period_llm_call(mon
 async def test_stages_run_in_order_and_package_records_tool_calls(monkeypatch):
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
     order = []
 
     async def fake_flights(*args, **kwargs):
@@ -376,7 +367,6 @@ async def test_stages_run_in_order_and_package_records_tool_calls(monkeypatch):
     package = db.saved[0]["package"]
     assert package["tool_calls"], "every serpapi call must be logged"
     assert all(set(tc) == {"engine", "params", "result_count"}
-               or set(tc) in ({"engine", "days"}, {"engine", "skipped"})  # jev-itinerary planner entry
                or set(tc) == {"engine", "revalidated", "reason"}  # winner revalidation entry
                for tc in package["tool_calls"])
     assert "corpus" in package and "curated" in package
@@ -387,7 +377,6 @@ async def test_curation_indices_out_of_range_are_dropped(monkeypatch):
     trip = await store.create(make_trip())
     llm = FakeLLM(
         response=INTENT,
-        email_response=EMAIL,
         responses={Curation: Curation(flight_indices=[99], poi_indices=[0], stay_indices=[0])},
     )
 
@@ -414,16 +403,7 @@ async def test_curation_indices_out_of_range_are_dropped(monkeypatch):
     assert len(db.saved[0]["package"]["curated"]["maps"]) == 1
 
 
-# --- Validation gate: grounding of EmailContent resources against the curated corpus ---
-
-HALLUCINATED = {"name": "Castello Fantasma", "description": "Non esiste nel corpus",
-                "price": "", "link": "https://fake.example/castello-fantasma"}
-
-
-def _email(resources: list[dict]) -> EmailContent:
-    return EmailContent(subject="Il tuo viaggio a Tokyo", opening="Tokyo in settembre ha un che di magico.",
-                        understanding="Capisco che cerchi cibo locale lontano dalle folle.",
-                        resources=resources)
+# --- Validation gate: grounding of dream scenes against the curated corpus ---
 
 
 async def _run_with_searches(monkeypatch, llm, email, db, trip, store):
@@ -446,63 +426,48 @@ async def _run_with_searches(monkeypatch, llm, email, db, trip, store):
     await _run(orchestrator)
 
 
-async def test_gate_drops_hallucinated_resource_keeps_real_one(monkeypatch):
+async def test_compose_dream_uses_large_token_budget(monkeypatch):
+    """Dream scenes are long prose: compose must request headroom, or long
+    dreams truncate (prod ValidationError, trip ERROR)."""
+    from src.core.models import DreamContent
+
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, email_response=_email([HALLUCINATED, EMAIL.resources[0]]))
+    llm = FakeLLM(response=INTENT, dream_responses=[DreamContent(
+        subject="Tokyo", arrival="Atterri a Tokyo di sera, il vento sa di sale.",
+        scenes=[
+            {"title": "Senso-ji",
+             "prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
+             "place_links": ["https://example.com/poi"]},
+            {"title": "Ryokan",
+             "prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
+             "place_links": ["https://example.com/hotel"]},
+        ])])
     email = FakeEmailSender()
     db = FakeDatabase()
 
     await _run_with_searches(monkeypatch, llm, email, db, trip, store)
 
-    assert len(email.sent) == 1
-    body = email.sent[0]["body"]
-    assert "Senso-ji" in body
-    assert "Castello Fantasma" not in body
-    # one valid resource survived -> no retry needed
-    assert len([p for p, m in llm.calls if m is EmailContent]) == 1
+    budgets = [kw["max_tokens"] for kw in llm.calls_kwargs if kw["model"] is DreamContent]
+    assert budgets, "compose must call extract for DreamContent"
+    assert all(b >= 2048 for b in budgets)
 
 
-async def test_gate_dropped_resources_are_logged(monkeypatch, caplog):
-    import logging
+async def test_compose_dream_all_scenes_invalid_aborts_without_email(monkeypatch):
+    from src.core.models import DreamContent
 
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, email_response=_email([HALLUCINATED, EMAIL.resources[0]]))
-    email = FakeEmailSender()
-    db = FakeDatabase()
-
-    with caplog.at_level(logging.WARNING, logger="nostos.orchestrator"):
-        await _run_with_searches(monkeypatch, llm, email, db, trip, store)
-
-    assert any("invalid resources dropped" in r.getMessage() and "Castello Fantasma" in r.getMessage()
-               for r in caplog.records)
-
-
-async def test_gate_retry_second_attempt_succeeds_with_rejection_feedback(monkeypatch):
-    store = make_store()
-    trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT,
-                  email_responses=[_email([HALLUCINATED]), _email([EMAIL.resources[0]])])
-    email = FakeEmailSender()
-    db = FakeDatabase()
-
-    await _run_with_searches(monkeypatch, llm, email, db, trip, store)
-
-    email_prompts = [p for p, m in llm.calls if m is EmailContent]
-    assert len(email_prompts) == 2
-    assert "rejected" in email_prompts[1] and "not in the list" in email_prompts[1]
-    assert len(email.sent) == 1
-    assert "Senso-ji" in email.sent[0]["body"]
-    got = await store.get(trip.id)
-    assert got.status == TripStatus.DONE
-
-
-async def test_gate_both_attempts_hallucinated_fails_without_email(monkeypatch):
-    store = make_store()
-    trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT,
-                  email_responses=[_email([HALLUCINATED]), _email([HALLUCINATED])])
+    llm = FakeLLM(response=INTENT, responses={DreamContent: DreamContent(
+        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
+        scenes=[
+            {"title": "Costa sud",
+             "prose": "Una possibile sosta per il van lungo il percorso.",
+             "place_links": ["https://example.com/poi"]},
+            {"title": "Castello Fantasma",
+             "prose": "le mura antiche trattengono il calore del giorno tra pietre chiare e il vento leggero della sera",
+             "place_links": ["https://fake.example/castello"]},
+        ])})
     email = FakeEmailSender()
     db = FakeDatabase()
 
@@ -512,26 +477,8 @@ async def test_gate_both_attempts_hallucinated_fails_without_email(monkeypatch):
     assert db.saved == []
     got = await store.get(trip.id)
     assert got.status == TripStatus.ERROR
-    assert "could not ground" in (got.result or "")
-    assert len([p for p, m in llm.calls if m is EmailContent]) == 2
-
-
-async def test_gate_empty_resources_on_both_attempts_fails_without_email(monkeypatch):
-    store = make_store()
-    trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT,
-                  email_responses=[_email([]), _email([])])
-    email = FakeEmailSender()
-    db = FakeDatabase()
-
-    await _run_with_searches(monkeypatch, llm, email, db, trip, store)
-
-    assert email.sent == []
-    assert db.saved == []
-    got = await store.get(trip.id)
-    assert got.status == TripStatus.ERROR
-    assert "could not ground" in (got.result or "")
-    assert len([p for p, m in llm.calls if m is EmailContent]) == 2
+    assert "fewer than 2 valid scenes" in (got.result or "")
+    assert len([p for p, m in llm.calls if m is DreamContent]) == 2
 
 
 import pytest
@@ -691,7 +638,7 @@ async def _run_trip_with_jev(monkeypatch, jev_client):
 
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
     email = FakeEmailSender()
     db = FakeDatabase()
 
@@ -766,8 +713,8 @@ async def test_double_fallback_bands_use_existing_path(monkeypatch):
 
 async def test_flag_off_path_byte_identical(monkeypatch):
     """Default settings (provider llm-fallback) -> build_decision_client returns None,
-    existing path runs unchanged: no jev-router entry, legacy tool_call shapes
-    plus the jev-itinerary planner entry only."""
+    existing path runs unchanged: no jev-router entry, research tool_call shapes
+    plus the winner revalidation entry only."""
     import src.core.orchestrator as orch
     from src.settings import get_settings
 
@@ -775,7 +722,7 @@ async def test_flag_off_path_byte_identical(monkeypatch):
 
     store = make_store()
     trip = await store.create(make_trip())
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
     email = FakeEmailSender()
     db = FakeDatabase()
 
@@ -803,7 +750,6 @@ async def test_flag_off_path_byte_identical(monkeypatch):
     package = db.saved[0]["package"]
     assert _jev_tool_calls(package) == []
     assert all(set(tc) == {"engine", "params", "result_count"} or set(tc) == {"engine", "skipped", "reason"}
-               or set(tc) in ({"engine", "days"}, {"engine", "skipped"})  # jev-itinerary planner entry
                or set(tc) == {"engine", "revalidated", "reason"}  # winner revalidation entry
                for tc in package["tool_calls"])
 
@@ -857,3 +803,38 @@ async def test_decide_http_error_raises_jev_error():
                 await client.decide({}, {})
         finally:
             await client.close()
+
+
+async def test_compose_dream_validates_links_and_gates_filler(monkeypatch, caplog):
+    import logging
+
+    from src.core.models import DreamContent
+    store = make_store()
+    trip = await store.create(make_trip())
+    dream_first = DreamContent(
+        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
+        scenes=[
+            {"title": "Festo", "prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
+             "place_links": ["https://example.com/poi"]},
+            {"title": "Costa sud", "prose": "Una possibile sosta per il van lungo il percorso.",
+             "place_links": ["https://example.com/poi"]},
+        ])
+    dream_retry = DreamContent(
+        subject="Creta", arrival="Atterri a Heraklion di sera, il vento sa di sale.",
+        scenes=[
+            {"title": "Festo", "prose": "Tra le pietre minoiche la luce di ottobre è bassa e calda, e il dakos sa di orzo e pomodoro.",
+             "place_links": ["https://example.com/poi"]},
+            {"title": "Chania", "prose": "Nel porto vecchio le lampare rientrano all'alba e la bougatsa calda sa di cannella e crema.",
+             "place_links": ["https://example.com/hotel"]},
+        ])
+    llm = FakeLLM(response=INTENT, dream_responses=[dream_first, dream_retry])
+    email = FakeEmailSender()
+    db = FakeDatabase()
+    with caplog.at_level(logging.INFO, logger="nostos.orchestrator"):
+        await _run_with_searches(monkeypatch, llm, email, db, trip, store)
+    assert len(email.sent) == 1
+    assert "Festo" in email.sent[0]["body"]
+    assert "https://example.com/poi" in email.sent[0]["body"]
+    assert len([p for p, m in llm.calls if m is DreamContent]) == 2
+    assert any("dream retry:" in r.getMessage() for r in caplog.records), \
+        "a rejected scene must log the specificity retry"

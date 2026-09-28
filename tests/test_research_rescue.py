@@ -3,7 +3,6 @@ from src.core.models import Curation, ResolvedDestinations, ResolvedPlace, TripI
 from src.core.orchestrator import TripOrchestrator
 from src.core.schemas import TripStatus
 from tests.fakes import FakeDatabase, FakeEmailSender, FakeLLM, make_store, make_trip
-from tests.test_orchestrator import EMAIL
 
 
 def _van_intent(**overrides):
@@ -201,7 +200,6 @@ async def test_flight_only_curated_aborts_without_email(monkeypatch):
     llm = FakeLLM(
         response=TripIntent(destination="Scozia", departure_airport_code="MXP",
                             destination_airport_code="EDI"),
-        email_response=EMAIL,
         responses={Curation: Curation(flight_indices=[0], poi_indices=[], stay_indices=[])},
     )
     email = FakeEmailSender()

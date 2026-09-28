@@ -77,11 +77,19 @@ def _strip_duplicate_price(desc: str, price: str) -> str:
     return desc
 
 
+#: "4.3 stars" (SerpAPI English) normalized to Italian in card prose.
+_STARS_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s+stars?\b", re.IGNORECASE)
+
+
+def _it_stars(desc: str) -> str:
+    return _STARS_RE.sub(lambda m: f"{m.group(1)} stelle", desc or "")
+
+
 _CARD_TEMPLATE = """
 <table class="card-frame" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom:12px;">
   <tr>
     <td class="card d-card" style="background-color:#DFE9F3;border:1px solid #D0DDE9;border-radius:16px;padding:18px 20px;">
-      <div class="d-cardname d-name" style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:#221D0F;line-height:1.35;"><a href="{href}" target="_blank" style="color:inherit;text-decoration:underline;">{name}</a></div>
+      <div class="d-cardname d-name" style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:#221D0F;line-height:1.35;">{name}</div>
       {desc_block}
       {price_block}
       <div style="margin-top:10px;"><a href="{href}" target="_blank" style="font-family:'IBM Plex Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#A84E28;text-decoration:underline;">Apri &rarr;</a></div>
@@ -97,7 +105,7 @@ _PRICE_BLOCK = """
 
 def _render_card(item: dict, is_flight: bool = False) -> str:
     name = _humanize_flight_name(item.get("name") or "")
-    desc = item.get("description") or ""
+    desc = _it_stars(item.get("description") or "")
     price = item.get("price") or ""
     if is_flight:
         desc = _strip_duplicate_price(desc, price)
@@ -107,9 +115,6 @@ def _render_card(item: dict, is_flight: bool = False) -> str:
         desc_block=_DESC_BLOCK.format(desc=_e(desc)) if desc else "",
         price_block=_PRICE_BLOCK.format(price=_e(price)) if price else "",
     )
-
-
-_GROUP_HEADINGS = {"flights": "Voli", "places": "Dove stare", "maps": "Cosa fare"}
 
 
 def _render_group(label: str, items: list[dict], is_flight: bool = False) -> str:
@@ -145,33 +150,6 @@ def _render_rental_group(content: dict) -> str:
     return _render_group(RENTAL_HEADING, _rental_items(content))
 
 
-def _grouped_cards(content: dict, exclude_links: set[str] | None = None) -> str:
-    """Group resources under Voli/Dove stare/Cosa fare headings.
-
-    Links in `exclude_links` (the hero flight) never render here — neither as
-    grouped cards nor as leftover singles. On van trips, rental-tagged places
-    render only in the "Dove noleggiare" section, never duplicated here."""
-    excluded = set(exclude_links or ())
-    smap = content.get("sections_map", {})
-    flight_links = set(smap.get("flights", []))
-    pool = [r for r in content.get("resources", [])
-            if not (_is_van_trip(content) and r.get("rental"))]
-    used: set[str] = set(excluded)
-    out = []
-    for kind, label in _GROUP_HEADINGS.items():
-        allow = set(smap.get(kind, [])) - excluded
-        items = [r for r in pool if r.get("link") in allow and r["link"] not in used]
-        for r in items:
-            used.add(r["link"])
-        out.append(_render_group(label, items, is_flight=(kind == "flights")))
-    leftovers = [r for r in pool if r.get("link") not in used]
-    if leftovers:
-        out.append("\n".join(
-            _render_card(r, is_flight=(r.get("link") in flight_links)) for r in leftovers
-        ))  # unmatched singles render flat
-    return "\n".join(o for o in out if o)
-
-
 def _render_sources(
     appendix: dict, cap: int = SOURCES_CAP, exclude_links: set[str] | None = None
 ) -> str:
@@ -204,70 +182,6 @@ def _render_sources(
     return f"{head}<ul style=\"margin:4px 0 0;padding-left:18px;\">{lis}</ul>"
 
 
-def _render_arrival_block(items: list[dict]) -> str:
-    """Hero card for the first flight plus a bulletproof 'Vedi il volo' button."""
-    flight = next((i for i in items if i.get("link")), None)
-    if flight is None:
-        return ""
-    name = _humanize_flight_name(flight.get("name") or "Volo")
-    price = flight.get("price") or ""
-    desc = _strip_duplicate_price(flight.get("description") or "", price)
-    desc_block = f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#3B4956;margin-top:6px;">{_e(desc)}</div>' if desc else ""
-    price_block = f'<div class="d-price" style="display:inline-block;font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;color:#B58026;background-color:#EBF2F8;border:1px solid #B58026;padding:6px 14px;border-radius:999px;margin-top:10px;">{_e(price)}</div>' if price else ""
-    return (
-        '<div style="margin-top:24px;padding:20px 22px;background-color:#DFE9F3;border:1px solid #B58026;border-radius:14px;">'
-        '<div style="font-family:\'IBM Plex Sans\',Arial,sans-serif;font-size:12px;font-weight:600;'
-        'letter-spacing:1px;text-transform:uppercase;color:#4E6071;margin-bottom:8px;">Come arrivare</div>'
-        f'<div class="d-name" style="font-family:\'Fraunces\',Georgia,serif;font-size:18px;font-weight:600;color:#221D0F;line-height:1.4;"><a href="{_e(flight["link"])}" target="_blank" style="color:inherit;text-decoration:underline;">{_e(name)}</a></div>'
-        f"{desc_block}{price_block}"
-        '<table class="btn-frame" role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:14px;">'
-        "<tr>"
-        f'<td bgcolor="#A84E28" style="border-radius:999px;background-color:#A84E28;">'
-        f'<a href="{_e(flight["link"])}" target="_blank" style="display:inline-block;padding:14px 26px;font-size:16px;font-weight:600;color:#FFFFFF;text-decoration:none;">Vedi il volo</a>'
-        "</td></tr></table></div>"
-    )
-
-
-#: Neutral one-liners per travel mode. They promise nothing ungrounded —
-#: specifics (where to stop, where to rent) come only from LLM-grounded
-#: resource text, never from this static copy.
-_TRAVEL_MODE_BLOCKS = {
-    "road_trip": (
-        "Come muoversi in loco",
-        "Tappe giornaliere in auto, strada facendo.",
-    ),
-    "van_life": (
-        "Vita in van",
-        "Itinerario su strada, pernottamenti a bordo.",
-    ),
-    "sailing": (
-        "Navigazione",
-        "Rotte costiere in barca, tappe a terra.",
-    ),
-}
-
-
-def _render_travel_mode_block(travel_mode: str | None, mobility: list[str] | None = None) -> str:
-    """Single travel box: mode heading + body prose. There is deliberately no
-    'Mezzi' line — a bare vehicle list ("Mezzi: auto, van") makes no sense;
-    mobility info lives in the LLM prose instead. Unknown modes (incl. 'fixed')
-    render no box at all.
-    """
-    del mobility  # accepted for caller compatibility; never rendered
-    tm = (travel_mode or "").lower()
-    if tm not in _TRAVEL_MODE_BLOCKS:
-        return ""
-    heading, body = _TRAVEL_MODE_BLOCKS[tm]
-    return (
-        f'<div style="margin-top:24px;padding:18px 20px;background-color:#EBF2F8;border:1px solid #B58026;'
-        f'border-radius:12px;">'
-        f'<div style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;font-weight:600;color:#B58026;'
-        f'margin-bottom:8px;">{_e(heading)}</div>'
-        f'<div class="d-bodytext" style="font-family:\'Fraunces\',Georgia,serif;font-size:15px;line-height:1.6;color:#221D0F;">'
-        f'{_e(body)}</div></div>'
-    )
-
-
 def _render_button(href: str, label: str) -> str:
     """Table-based bulletproof button: 14px vertical padding + 16px text ≈ 44px target."""
     return (
@@ -289,60 +203,142 @@ def _render_button_row(feedback_link: str) -> str:
     return (
         '<tr><td class="gutter" style="padding:24px 36px 0;">'
         '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">'
-        f'<tr><td class="btn-cell" align="center">{_render_button(feedback_link, "Lascia un feedback")}</td>'
+        f'<tr><td class="btn-cell" align="center">{_render_button(feedback_link, "Parliamone insieme")}</td>'
         "</tr></table></td></tr>"
     )
 
 
-def _render_itinerary(days: list[dict], cards_by_link: dict[str, dict]) -> str:
-    """Itinerary section: day_label + reused grounded cards + free transition.
-    Entries with no valid cards render label + transition only. Empty plan -> ""."""
-    blocks = []
-    for day in days or []:
-        label = day.get("day_label") or ""
-        cards = [cards_by_link[link] for link in day.get("links") or [] if link in cards_by_link][:3]
-        transition = day.get("transition") or ""
-        if not label and not cards and not transition:
-            continue
-        head = (f'<div style="font-family:\'Fraunces\',Georgia,serif;font-size:16px;font-weight:600;'
-                f'color:#221D0F;margin:16px 0 8px;">{_e(label)}</div>' if label else "")
-        cards_html = "".join(_render_card(c) for c in cards)
-        trans_html = (f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',Arial,sans-serif;'
-                      f'font-size:13px;font-style:italic;line-height:1.55;color:#3B4956;margin-top:5px;">'
-                      f'{_e(transition)}</div>' if transition else "")
-        blocks.append(head + cards_html + trans_html)
-    if not blocks:
+def _render_arrival(arrival: str) -> str:
+    if not (arrival or "").strip():
         return ""
-    head_all = ('<div class="d-heading" style="font-family:\'Fraunces\',Georgia,serif;font-size:19px;'
-                'font-weight:600;color:#221D0F;line-height:1.4;">L\'itinerario</div>'
-                '<div class="d-hairline" style="border-top:1px solid #D0DDE9;margin-top:18px;'
-                'line-height:1px;font-size:0;">&nbsp;</div>')
-    return head_all + "".join(blocks)
+    return (f'<div class="d-lead lead" style="font-family:\'Fraunces\',Georgia,serif;font-size:19px;'
+            f'font-weight:500;font-style:italic;line-height:1.55;color:#221D0F;">{_e(arrival.strip())}</div>')
+
+
+def _render_scenes(scenes: list[dict], cards_by_link: dict[str, dict]) -> str:
+    blocks = []
+    for scene in scenes or []:
+        title, prose = (scene.get("title") or "").strip(), (scene.get("prose") or "").strip()
+        if not title and not prose:
+            continue
+        links = "".join(
+            f'<div style="margin-top:6px;"><a href="{_e(link)}" target="_blank" '
+            f'style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\',Roboto,Helvetica,'
+            f'Arial,sans-serif;font-size:13px;font-weight:600;color:#A84E28;'
+            f'text-decoration:underline;">Vedi →</a></div>'
+            for link in scene.get("place_links", []) if link in cards_by_link)
+        blocks.append(
+            f'<div class="d-name" style="font-family:\'Fraunces\',Georgia,serif;font-size:18px;'
+            f'font-weight:600;color:#221D0F;line-height:1.4;margin-top:18px;">{_e(title)}</div>'
+            f'<div class="d-desc" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+            f'Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#3B4956;'
+            f'margin-top:8px;">{_e(prose)}</div>' + links)
+    return "".join(blocks)
+
+
+def _render_logistics(flights: list[dict]) -> str:
+    """Slim muted strip: every curated flight as facts. Absent when none."""
+    shown = [f for f in flights or [] if f.get("link")]
+    if not shown:
+        return ""
+    rows = []
+    for flight in shown:
+        name = _humanize_flight_name(flight.get("name") or "Volo")
+        name = re.sub(r"^Volo\s+", "", name)
+        facts = " · ".join(p for p in [name, flight.get("price")] if p)
+        rows.append(
+            f'{_e(facts)} <a href="{_e(flight["link"])}" target="_blank" '
+            f'style="color:#A84E28;font-weight:600;text-decoration:underline;">Vedi il volo →</a>'
+        )
+    items = "<br>".join(rows)
+    return (
+        '<div class="d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+        'Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#4E6071;'
+        'margin-top:24px;padding-top:16px;border-top:1px solid #D0DDE9;">'
+        f"Volo: {items}</div>"
+    )
+
+
+_IT_MONTHS = ("gen", "feb", "mar", "apr", "mag", "giu",
+              "lug", "ago", "set", "ott", "nov", "dic")
+
+
+def format_trip_summary(destination: str | None, start_date: str | None,
+                        end_date: str | None, travelers_count: int | None,
+                        travelers_type: str | None) -> str:
+    """One-line trip memory: 'Creta · 30 lug – 30 ago 2027 · coppia (2)'.
+    Missing parts are skipped; empty when nothing is known."""
+
+    def day_month(iso: str | None) -> str:
+        try:
+            y, m, d = (iso or "").split("-")
+            return f"{int(d)} {_IT_MONTHS[int(m) - 1]}"
+        except (ValueError, IndexError):
+            return ""
+
+    parts = []
+    if (destination or "").strip():
+        parts.append(destination.strip())
+    start, end = day_month(start_date), day_month(end_date)
+    year = (start_date or "")[:4] if (start_date or "")[:4].isdigit() else ""
+    if start and end:
+        parts.append(f"{start} – {end} {year}".strip())
+    elif start:
+        parts.append(f"{start} {year}".strip())
+    who = " ".join(p for p in (travelers_type or "", f"({travelers_count})" if travelers_count else "") if p.strip())
+    if who.strip():
+        parts.append(who.strip())
+    return " · ".join(parts)
+
+
+def _render_trip_summary(summary: str) -> str:
+    if not (summary or "").strip():
+        return ""
+    return (f'<div class="trip-summary d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,'
+            f'\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:12px;letter-spacing:0.8px;'
+            f'color:#4E6071;margin-top:10px;text-align:center;">{_e(summary.strip())}</div>')
+
+
+def _render_draft_note(note: str) -> str:
+    """First-draft framing: this is a starting proposal, the human follow-up
+    is the actual next step. Renders nothing when absent."""
+    if not (note or "").strip():
+        return ""
+    return (f'<div class="draft-note d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,'
+            f'\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-style:italic;'
+            f'line-height:1.6;color:#4E6071;margin-top:14px;">{_e(note.strip())}</div>')
 
 
 def build_html_email(content: dict) -> str:
     smap = content.get("sections_map", {})
     flight_links = set(smap.get("flights", []))
-    arrival_items = [r for r in content.get("resources", []) if r.get("link") in flight_links]
-    hero_link = next((r["link"] for r in arrival_items if r.get("link")), None)
-    exclude_links = {hero_link} if hero_link else set()
-    shown_links = {r.get("link") for r in content.get("resources", []) if r.get("link")}
-    shown_links |= exclude_links
+    resources = content.get("resources", [])
+    shown_links = {r.get("link") for r in resources if r.get("link")}
     feedback_link = content.get("feedback_link") or ""
-    plan_days = content.get("itinerary_days", [])
-    cards_by_link = {r.get("link"): r for r in content.get("resources", []) if r.get("link")}
+    cards_by_link = {r.get("link"): r for r in resources if r.get("link")}
+    flights = [r for r in resources if r.get("link") in flight_links]
+    logistics_section = _render_logistics(flights)
+    logistics_text = (content.get("logistics") or "").strip()
+    if logistics_text:
+        logistics_section += (
+            '<div class="d-muted" style="font-family:\'IBM Plex Sans\',-apple-system,\'Segoe UI\','
+            'Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#4E6071;'
+            'margin-top:8px;">'
+            f"{_e(logistics_text)}</div>"
+        )
     return load_email_template().safe_substitute(
-        opening=_e(content["opening"]),
-        understanding=_e(content["understanding"]),
-        arrival_section=_render_arrival_block(arrival_items),
-        resource_groups=_grouped_cards(content, exclude_links=exclude_links),
-        itinerary_section=_render_itinerary(plan_days, cards_by_link),
+        opening=_e(content.get("opening") or ""),
+        understanding=_e(content.get("understanding") or ""),
+        trip_summary=_render_trip_summary(content.get("trip_summary") or ""),
+        draft_note=_render_draft_note(content.get("draft_note") or ""),
+        arrival=_render_arrival(content.get("arrival") or ""),
+        scenes=_render_scenes(content.get("scenes", []), cards_by_link),
+        logistics_section=logistics_section,
         rental_section=_render_rental_group(content),
-        travel_box=_render_travel_mode_block(content.get("travel_mode"), content.get("mobility")),
         sources_section=_render_sources(content.get("appendix", {}), exclude_links=shown_links),
-        cta=_e(content["cta"]),
+        cta=_e(content.get("cta") or ""),
         button_row=_render_button_row(feedback_link),
-        honest_note=_e(content["honest_note"]),
+        honest_note=_e(content.get("honest_note") or ""),
         signature_greeting=_e(SIGNATURE_GREETING),
         signature_name=_e(SIGNATURE_NAME),
         signature_role=_e(SIGNATURE_ROLE),

@@ -17,27 +17,25 @@ from src.services.apis.email import (
     SIGNATURE_ROLE,
     EmailSender,
     build_html_email,
+    format_trip_summary,
 )
 from src.infrastructure.database import Database
 from src.core.models import (
     Curation,
     DepartureAirports,
-    EmailContent,
     PeriodPlan,
     ResolvedDestinations,
     TargetQueries,
     TripIntent,
-    TripPlan,
 )
 from src.core.prompts import (
     build_curation_prompt,
-    build_email_prompt,
     build_geo_prompt,
     build_intent_prompt,
     build_period_prompt,
     build_target_prompt,
 )
-from src.core.validation import build_allowed_resources, sanitize_windows, validate_resources
+from src.core.validation import build_allowed_resources, sanitize_windows
 from src.core.decision_router import route_trip
 from src.core.decision_scoring import pick_best_flight, pick_top_pois
 from src.services.apis.decisions import build_decision_client
@@ -56,37 +54,15 @@ FLEXIBLE_WINDOW_SHIFT_DAYS = 7
 
 HONEST_NOTE = "Questa email è generata automaticamente con Xen-IA, assistente AI di Nostos."
 
-CTA = "Com'è andata? Lasciaci un feedback."
+DRAFT_NOTE = ("Questa è una prima bozza composta da Xen-IA sui dati di oggi: "
+              "il viaggio vero lo definiamo insieme al passo successivo.")
+
+CTA = "Il prossimo passo è umano: dimmi cosa cambiare e ne parliamo insieme."
 
 JUNK_DOMAINS = frozenset({
     "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
     "youtube.com", "youtu.be",
 })
-
-#: Numbered-corpus IDs (e.g. [F0], [M12], [P3]) the LLM echoes into EmailContent
-#: text fields. Stripped post-validation in _compose_email; the ID plus at most
-#: one adjacent space goes, preferring the trailing one ("[F0] X" -> "X").
-_BRACKET_ID_RE = re.compile(r"\[(?:F|M|P)\d+\] ?| ?\[(?:F|M|P)\d+\]")
-
-
-def _strip_bracket_id(text: str | None) -> str:
-    """Remove leaked corpus IDs from a single text field."""
-    return _BRACKET_ID_RE.sub("", text or "").strip()
-
-
-def strip_bracket_ids(content: dict) -> dict:
-    """Remove leaked corpus IDs from opening/understanding and every resource
-    name/description/price. Runs after validation (IDs never affect grounding)
-    and before rendering, so both HTML and text builders receive clean copy."""
-    for field in ("opening", "understanding"):
-        if content.get(field):
-            content[field] = _strip_bracket_id(content[field])
-    for resource in content.get("resources", []):
-        for field in ("name", "description", "price"):
-            if resource.get(field):
-                resource[field] = _strip_bracket_id(resource[field])
-    return content
-
 
 def _is_junk_link(link: str | None) -> bool:
     """True for social/video links that must never reach an email."""
@@ -245,9 +221,7 @@ class TripOrchestrator:
                         "only a flight was found: not enough for a useful email, trip aborted without sending"
                     )
                 research["curated"] = curated
-                trip_plan = await self._plan_itinerary(trip, intent, curated)
-                research["trip_plan"] = trip_plan
-                email_content, body_text, body_html, package = await self._compose_email(trip, intent, research)
+                email_content, body_text, body_html, package = await self._compose_dream(trip, intent, research)
 
             async with self._timed("save_history"):
                 await self._save_history(trip, email_content, body_text, package)
@@ -305,58 +279,90 @@ class TripOrchestrator:
         )
 
     @staticmethod
+    def _dream_resources(curated: dict) -> list[dict]:
+        """Deterministic grounding list from curated SerpAPI data (never LLM
+        prose): names/links/prices come from research, descriptions stay empty
+        because the dream prose lives in scenes. Feeds cards_by_link, the
+        rental filter, the appendix shown-computation and the text twin."""
+        resources: list[dict] = []
+        for f in curated.get("flights", []):
+            if not f.get("link"):
+                continue
+            name = (f"Volo {(f.get('airline') or '').strip()} · "
+                    f"{(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}").strip()
+            price = f.get("price_eur")
+            resources.append({
+                "name": name or "Volo",
+                "description": "",
+                "price": f"{price} EUR" if isinstance(price, (int, float)) else "",
+                "link": f["link"],
+            })
+        for m in curated.get("maps", []):
+            if not m.get("link"):
+                continue
+            resources.append({"name": m.get("name") or "Luogo", "description": "",
+                              "price": "", "link": m["link"]})
+        for p in curated.get("places", []):
+            if not p.get("link"):
+                continue
+            price = p.get("price_per_night_eur")
+            entry = {"name": p.get("name") or "Alloggio", "description": "",
+                     "price": f"{price} EUR/notte" if isinstance(price, (int, float)) else "",
+                     "link": p["link"]}
+            if p.get("rental"):
+                entry["rental"] = True
+            resources.append(entry)
+        return resources
+
+    @staticmethod
     def _compose_body_text(email_content: dict) -> str:
-        lines = [email_content["opening"], "", email_content["understanding"], ""]
+        """Acts mirror of the HTML email: opening, understanding, draft note,
+        arrival, scenes (title+prose+links), flight strip, logistics, rental,
+        sources, then the cta/honest_note/signature tail. No flat resource
+        list, no phases, no travel box."""
+        lines: list[str] = []
+        if (email_content.get("opening") or "").strip():
+            lines.append(email_content["opening"].strip())
+            lines.append("")
+        if (email_content.get("understanding") or "").strip():
+            lines.append(email_content["understanding"].strip())
+            lines.append("")
+        if (email_content.get("draft_note") or "").strip():
+            lines.append(email_content["draft_note"].strip())
+            lines.append("")
+        resources = email_content.get("resources", [])
+        by_link = {r.get("link"): r for r in resources if r.get("link")}
+        if (email_content.get("arrival") or "").strip():
+            lines.append(email_content["arrival"].strip())
+            lines.append("")
+        for scene in email_content.get("scenes", []):
+            if scene.get("title"):
+                lines.append(scene["title"])
+            if scene.get("prose"):
+                lines.append(scene["prose"])
+            for link in scene.get("place_links", []):
+                if link in by_link:
+                    lines.append(f"   {link}")
+            lines.append("")
         smap = email_content.get("sections_map", {})
         flight_links = set(smap.get("flights", []))
-        resources = email_content.get("resources", [])
-        flight_items = [r for r in resources if r.get("link") in flight_links]
-        hero_link = next((r["link"] for r in flight_items if r.get("link")), None)
-        if flight_items:
-            lines.append("Come arrivare:")
-            first = flight_items[0]
-            flight_line = first["name"]
-            if first.get("price"):
-                flight_line += f" — {first['price']}"
-            lines.append(flight_line)
-            lines.append(first["link"])
+        dream_flights = [r for r in resources if r.get("link") in flight_links]
+        for flight in dream_flights:
+            name = re.sub(r"^Volo\s+", "", flight.get("name") or "Volo")
+            facts = " · ".join(p for p in [name, flight.get("price")] if p)
+            lines.append(f"Volo: {facts}")
+            lines.append(f"   {flight['link']}")
+        if dream_flights:
             lines.append("")
-        # Travel mode labels/descriptions mirror the HTML travel box one-liners.
+        if (email_content.get("logistics") or "").strip():
+            lines.append(email_content["logistics"].strip())
+            lines.append("")
         travel_mode = email_content.get("travel_mode")
         travel_mode_lower = travel_mode.lower() if isinstance(travel_mode, str) else ""
         is_van = travel_mode_lower == "van_life" or (email_content.get("accommodation_style") or "").lower() == "van"
-        base_listed = [r for r in resources if r.get("link") != hero_link] if hero_link else list(resources)
         place_links = set(smap.get("places", []))
-        rentals = [r for r in base_listed
+        rentals = [r for r in resources
                    if r.get("rental") and r.get("link") in place_links][:2] if is_van else []
-        rental_links = {r.get("link") for r in rentals}
-        lines.append("Punti di partenza:")
-        listed = [r for r in base_listed if r.get("link") not in rental_links]
-        for i, item in enumerate(listed, 1):
-            entry = f"{i}. {item['name']}"
-            if item.get("price"):
-                entry += f" — {item['price']}"
-            lines.append(entry)
-            if item.get("description"):
-                lines.append(f"   {item['description']}")
-            lines.append(f"   {item['link']}")
-
-        # Travel box one-liner mirroring the HTML hierarchy (no Mezzi line:
-        # mobility info lives in the LLM prose, a bare vehicle list makes no sense).
-        # Neutral one-liners only: specifics come from grounded resource text.
-        mode_labels = {
-            "road_trip": "Come muoversi in loco",
-            "van_life": "Vita in van",
-            "sailing": "Navigazione",
-        }
-        mode_descriptions = {
-            "road_trip": "Tappe giornaliere in auto, strada facendo.",
-            "van_life": "Itinerario su strada, pernottamenti a bordo.",
-            "sailing": "Rotte costiere in barca, tappe a terra.",
-        }
-        lines.append("")
-        if travel_mode_lower in mode_labels:
-            lines.append(f"{mode_labels[travel_mode_lower]}: {mode_descriptions[travel_mode_lower]}")
         if rentals:
             lines.append("")
             lines.append("Dove noleggiare il van:")
@@ -369,24 +375,9 @@ class TripOrchestrator:
                     lines.append(f"   {item['description']}")
                 lines.append(f"   {item['link']}")
 
-        itinerary_days = email_content.get("itinerary_days", [])
-        if itinerary_days:
-            lines.append("L'itinerario:")
-            names_by_link = {r.get("link"): r.get("name") for r in email_content.get("resources", [])}
-            for day in itinerary_days:
-                lines.append(day.get("day_label", ""))
-                for link in day.get("links") or []:
-                    if link in names_by_link:
-                        lines.append(f"- {names_by_link[link]}")
-                if day.get("transition"):
-                    lines.append(f"  {day['transition']}")
-            lines.append("")
-
         appendix = email_content.get("appendix", {})
         if appendix:
             shown = {r.get("link") for r in resources if r.get("link")}
-            if hero_link:
-                shown.add(hero_link)
             urls: list[str] = []
             for _label, items in appendix.get("groups", []):
                 for i in items or []:
@@ -876,71 +867,64 @@ class TripOrchestrator:
             }
         return curated
 
-    async def _plan_itinerary(self, trip: TripResponse, intent: TripIntent, curated: dict) -> TripPlan:
-        from src.core.models import TripPlan
-        from src.core.prompts import build_plan_prompt
-        from src.core.trip_plan import sanitize_plan
-        from datetime import date
-        if not trip.start_date or not trip.end_date:
-            return TripPlan()
-        try:
-            days = (date.fromisoformat(trip.end_date) - date.fromisoformat(trip.start_date)).days + 1
-        except ValueError:
-            return TripPlan()
-        if days <= 0:
-            return TripPlan()
-        try:
-            raw = await self._llm.extract(
-                build_plan_prompt(trip, intent,
-                                  self._render_flights(curated["flights"], numbered=True),
-                                  self._render_maps(curated["maps"], numbered=True),
-                                  self._render_places(curated["places"], numbered=True),
-                                  days),
-                TripPlan,
-            )
-            return sanitize_plan(raw, len(curated["flights"]), len(curated["maps"]), len(curated["places"]))
-        except Exception as exc:
-            logger.warning("trip plan skipped: %s: %s", type(exc).__name__, exc)
-            return TripPlan()
-
-    async def _compose_email(
+    async def _compose_dream(
         self, trip: TripResponse, intent: TripIntent, research: dict
     ) -> tuple[dict, str, str, dict]:
-        corpus, curated = research["corpus"], research["curated"]
-        trip_plan = research.get("trip_plan", TripPlan())
-        if trip_plan.days:
-            research["tool_calls"].append({"engine": "jev-itinerary", "days": len(trip_plan.days)})
-        else:
-            research["tool_calls"].append({"engine": "jev-itinerary", "skipped": True})
-        allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
+        from src.core.dream import find_new_proper_nouns, is_generic_scene
+        from src.core.models import DreamContent
+        from src.core.prompts import build_dream_prompt
 
-        resolve_rationale = research.get("geo", {}).get("resolve_rationale", "")
-        prompt = build_email_prompt(intent,
+        corpus, curated = research["corpus"], research["curated"]
+        allowed = build_allowed_resources(curated["flights"], curated["maps"], curated["places"])
+        allowed_links = set(allowed.links)
+        known_names = [r.get("name") or "" for r in
+                       (curated["flights"] + curated["maps"] + curated["places"])]
+        days = 0
+        try:
+            from datetime import date
+            days = (date.fromisoformat(trip.end_date) - date.fromisoformat(trip.start_date)).days + 1
+        except (TypeError, ValueError):
+            days = 0
+        prompt = build_dream_prompt(trip.free_text or "", intent,
                                     self._render_flights(curated["flights"], numbered=True),
                                     self._render_maps(curated["maps"], numbered=True),
-                                    self._render_places(curated["places"], numbered=True),
-                                    trip,
-                                    resolve_rationale=resolve_rationale)
-        content = (await self._llm.extract(prompt, EmailContent)).model_dump()
+                                    self._render_places(curated["places"], numbered=True), days)
+        content = (await self._llm.extract(prompt, DreamContent, max_tokens=4096)).model_dump()
 
-        report = validate_resources(content["resources"], allowed)
-        if report.invalid or not content["resources"]:
-            logger.warning("invalid resources dropped: %s", [r.get("name") for r in report.invalid])
-            content["resources"] = report.valid
-            if not content["resources"]:
-                retry_prompt = prompt + "\n\nIMPORTANT: your previous answer cited resources not in the list and was rejected. Use ONLY the listed resources."
-                content = (await self._llm.extract(retry_prompt, EmailContent)).model_dump()
-                report = validate_resources(content["resources"], allowed)
-                content["resources"] = report.valid
-                if not content["resources"]:
-                    raise NoResourcesError("email composition could not ground any real resource")
-        content = self._ensure_flight_hero(content, curated)
-        content = self._apply_curated_flight_prices(content, curated)
-        content = self._clean_resource_prices(content)
+        def _scene_ok(scene: dict) -> bool:
+            if not scene.get("title") or is_generic_scene(scene.get("prose", "")):
+                return False
+            if any(link not in allowed_links for link in scene.get("place_links", [])):
+                return False
+            if find_new_proper_nouns(scene.get("prose", ""), known_names):
+                return False
+            return True
 
+        scenes = [s for s in content.get("scenes", []) if _scene_ok(s)]
+        if len(scenes) < len(content.get("scenes", [])):
+            logger.info("dream retry: %d scenes rejected, one specificity retry",
+                        len(content.get("scenes", [])) - len(scenes))
+            retry = (await self._llm.extract(
+                prompt + "\n\nIMPORTANT: alcune scene erano generiche o citavano luoghi senza link. "
+                         "Riscrivi ogni scena con dettagli sensoriali concreti e link solo verificati.",
+                DreamContent, max_tokens=4096)).model_dump()
+            scenes = [s for s in retry.get("scenes", []) if _scene_ok(s)]
+            if scenes:
+                content = retry
+        content["scenes"] = scenes
+        if len(scenes) < 2:
+            raise NoResourcesError("dream has fewer than 2 valid scenes: email not sent")
+        # Deterministic grounding list from curated research (never LLM prose):
+        # without it the dream path renders no links (empty cards_by_link) and
+        # the twin diverges from the HTML.
+        content["resources"] = self._dream_resources(curated)
         content["honest_note"] = HONEST_NOTE
         content["cta"] = CTA
-        content = strip_bracket_ids(content)
+        content["draft_note"] = DRAFT_NOTE
+        content["trip_summary"] = format_trip_summary(
+            trip.destination, trip.start_date, trip.end_date,
+            trip.travelers_count, trip.travelers_type,
+        )
         from src.core.feedback_token import make_token
         from src.settings import get_settings
 
@@ -953,34 +937,26 @@ class TripOrchestrator:
             "places": [r["link"] for r in curated["places"] if r.get("link")],
             "maps": [r["link"] for r in curated["maps"] if r.get("link")],
         }
+        shown_links = {link for s in scenes for link in s.get("place_links", []) if link}
         content["appendix"] = self._build_appendix(
             research,
-            exclude_links={r["link"] for r in content["resources"] if r.get("link")},
-            allowed_links=set(allowed.links),
+            exclude_links=shown_links,
+            allowed_links=allowed_links,
         )
         # Pass intent fields for email template sections
         content["travel_mode"] = intent.travel_mode
         content["mobility"] = intent.mobility_preferences
         content["accommodation_style"] = intent.accommodation_style
-        flight_links = [r["link"] for r in curated["flights"] if r.get("link")]
-        maps_links = [r["link"] for r in curated["maps"] if r.get("link")]
-        places_links = [r["link"] for r in curated["places"] if r.get("link")]
-        itinerary_days = []
-        for day in trip_plan.days:
-            links = ([flight_links[i] for i in day.flight_refs if i < len(flight_links)]
-                     + [maps_links[i] for i in day.poi_refs if i < len(maps_links)]
-                     + [places_links[i] for i in day.stay_refs if i < len(places_links)])
-            itinerary_days.append({"day_label": day.day_label, "links": links, "transition": day.transition})
-        content["itinerary_days"] = itinerary_days
-        body_text = self._compose_body_text(content)
         body_html = build_html_email(content)
+        body_text = self._compose_body_text(content)
         package = {
             "intent": intent.model_dump(),
             "geo": research.get("geo", {}),
             "corpus": corpus,
             "curated": curated,
             "curated_rationale": curated.get("rationale", ""),
-            "trip_plan": research.get("trip_plan", TripPlan()).model_dump(),
+            "dream_rationale": curated.get("rationale", ""),
+            "dream": {"scenes": len(scenes)},
             "tool_calls": research["tool_calls"],
         }
         return content, body_text, body_html, package
@@ -1082,44 +1058,3 @@ class TripOrchestrator:
             return f"{label(i)}{it.get('name')} — {price_txt} — {it.get('link')}"
 
         return "\n".join(place_line(i, it) for i, it in enumerate(items))
-
-    @staticmethod
-    def _clean_resource_prices(content: dict) -> dict:
-        """Blank prices that are missing or leaked 'None ...' strings (SerpAPI
-        nulls echoed by the LLM), so neither HTML pills nor text lines print them."""
-        for resource in content.get("resources", []):
-            price = resource.get("price")
-            if not price or str(price).strip().lower().startswith("none"):
-                resource["price"] = ""
-        return content
-
-    @staticmethod
-    def _ensure_flight_hero(content: dict, curated: dict) -> dict:
-        """Deterministic hero guarantee: if the LLM cited no curated flight,
-        append one built from the winning researched flight (never invented:
-        name/date/price/link all come from SerpAPI data)."""
-        flight_links = {r.get("link") for r in content.get("resources", [])}
-        for f in curated.get("flights", []):
-            if not f.get("link") or f["link"] in flight_links:
-                continue
-            name = f"Volo {(f.get('airline') or '').strip()} · {(f.get('from') or '').strip()} – {(f.get('to') or '').strip()}".strip()
-            desc = f"Partenza {f['departure_date']}" if f.get("departure_date") else ""
-            price = f"{f['price_eur']} EUR" if isinstance(f.get("price_eur"), (int, float)) else ""
-            content.setdefault("resources", []).append(
-                {"name": name or "Volo", "description": desc, "price": price, "link": f["link"]})
-            logger.info("flight hero force-included from curated winner: %s", f["link"])
-            break
-        return content
-
-    @staticmethod
-    def _apply_curated_flight_prices(content: dict, curated: dict) -> dict:
-        """Overwrite flight price prose with researched numbers: the LLM writes
-        price text freely and validation only checks links, so figures can drift."""
-        by_link = {f.get("link"): f for f in curated.get("flights", []) if f.get("link")}
-        for resource in content.get("resources", []):
-            flight = by_link.get(resource.get("link"))
-            if flight is None:
-                continue
-            price = flight.get("price_eur")
-            resource["price"] = f"{price} EUR" if isinstance(price, (int, float)) else ""
-        return content

@@ -18,7 +18,7 @@ def test_real_links_are_not_junk():
 
 async def test_places_empty_retries_generic_query(monkeypatch):
     from tests.fakes import FakeDatabase, FakeLLM, make_store, make_trip
-    from tests.test_flight_matrix import EMAIL, _run
+    from tests.test_flight_matrix import _run
     from src.core.models import TripIntent
 
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
@@ -42,7 +42,7 @@ async def test_places_empty_retries_generic_query(monkeypatch):
     monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
     intent = TripIntent(destination="Shetland", accommodation_style="van", travel_mode="van_life")
     db = FakeDatabase()
-    await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
+    await _run(trip, FakeLLM(response=intent), db)
     assert len(queries) == 4
     assert queries[0].startswith("campeggio ")
     assert queries[1].startswith("campsite ")
@@ -57,7 +57,7 @@ async def test_places_empty_retries_generic_query(monkeypatch):
 
 async def test_places_retry_without_destination_uses_bare_hotels(monkeypatch):
     from tests.fakes import FakeDatabase, FakeLLM, make_trip
-    from tests.test_flight_matrix import EMAIL, _run
+    from tests.test_flight_matrix import _run
     from src.core.models import TripIntent
 
     trip = make_trip(destination=None, start_date="2026-09-01", end_date="2026-09-10")
@@ -81,7 +81,7 @@ async def test_places_retry_without_destination_uses_bare_hotels(monkeypatch):
     monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
     intent = TripIntent(destination=None, accommodation_style="hotel")
     db = FakeDatabase()
-    await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
+    await _run(trip, FakeLLM(response=intent), db)
     assert len(queries) == 2
     assert queries[1] == "hotels"
 
@@ -119,7 +119,7 @@ async def test_junk_domain_maps_item_rescued_with_generated_link(monkeypatch):
     """Restaurants whose only web presence is social keep the POI with a
     generated Maps link — no social URL ever reaches the email."""
     from tests.fakes import FakeDatabase, FakeLLM, make_trip
-    from tests.test_flight_matrix import EMAIL, _run
+    from tests.test_flight_matrix import _run
     from src.core.models import TripIntent
 
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
@@ -145,7 +145,7 @@ async def test_junk_domain_maps_item_rescued_with_generated_link(monkeypatch):
     monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
     intent = TripIntent(destination="Creta", accommodation_style="hotel")
     db = FakeDatabase()
-    await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
+    await _run(trip, FakeLLM(response=intent), db)
     corpus_maps = db.saved[0]["package"]["corpus"]["maps"]
     rescued = next(i for i in corpus_maps if i.get("name") == "Taverna To Stachi")
     assert "google.com/maps/search" in rescued["link"]
@@ -155,7 +155,7 @@ async def test_junk_domain_maps_item_rescued_with_generated_link(monkeypatch):
 
 async def test_linkless_maps_item_rescued_with_generated_link(monkeypatch):
     from tests.fakes import FakeDatabase, FakeLLM, make_trip
-    from tests.test_flight_matrix import EMAIL, _run
+    from tests.test_flight_matrix import _run
     from src.core.models import TripIntent
 
     trip = make_trip(start_date="2026-09-01", end_date="2026-09-10")
@@ -180,7 +180,7 @@ async def test_linkless_maps_item_rescued_with_generated_link(monkeypatch):
     monkeypatch.setattr("src.core.orchestrator.places.search", fake_places)
     intent = TripIntent(destination="Shetland", accommodation_style="hotel")
     db = FakeDatabase()
-    await _run(trip, FakeLLM(response=intent, email_response=EMAIL), db)
+    await _run(trip, FakeLLM(response=intent), db)
     corpus_maps = db.saved[0]["package"]["corpus"]["maps"]
     rescued = next(i for i in corpus_maps if i.get("name") == "Urquhart Castle")
     assert "google.com/maps/search" in rescued["link"]

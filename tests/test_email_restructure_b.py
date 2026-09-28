@@ -1,16 +1,11 @@
 """Part B tests: grounded copy, elegant titles, rental section, backed-only appendix."""
-import re
 
 from src.core.orchestrator import TripOrchestrator
-from src.core.models import TripIntent
-from src.core.prompts import build_email_prompt
 from src.core.validation import build_allowed_resources, validate_resources
 from src.services.apis.email import (
-    _TRAVEL_MODE_BLOCKS,
     _humanize_flight_name,
     build_html_email,
 )
-from tests.fakes import make_trip
 
 BASE = {"opening": "O.", "understanding": "U.", "resources": [], "cta": "C.",
         "honest_note": "N.", "sections_map": {}, "appendix": {"groups": [], "source_links": []}}
@@ -22,22 +17,19 @@ OLD_PROMISES = (
 )
 
 
-# --- B1: neutral one-liners, grounded travel paragraph ---
-
-def test_travel_mode_blocks_are_neutral_one_liners():
-    assert _TRAVEL_MODE_BLOCKS["van_life"] == ("Vita in van", "Itinerario su strada, pernottamenti a bordo.")
-    assert _TRAVEL_MODE_BLOCKS["road_trip"] == ("Come muoversi in loco", "Tappe giornaliere in auto, strada facendo.")
-    assert _TRAVEL_MODE_BLOCKS["sailing"] == ("Navigazione", "Rotte costiere in barca, tappe a terra.")
+# --- B1: no travel box in acts, grounded rental/appendix sections ---
 
 
-def test_travel_box_and_text_mirror_use_neutral_one_liners():
-    for mode, body in (("road_trip", "Tappe giornaliere in auto, strada facendo."),
-                       ("van_life", "Itinerario su strada, pernottamenti a bordo."),
-                       ("sailing", "Rotte costiere in barca, tappe a terra.")):
+def test_no_travel_box_in_html_or_text():
+    bodies = ("Tappe giornaliere in auto, strada facendo.",
+              "Itinerario su strada, pernottamenti a bordo.",
+              "Rotte costiere in barca, tappe a terra.")
+    for mode in ("road_trip", "van_life", "sailing"):
         html = build_html_email({**BASE, "travel_mode": mode})
-        assert body in html
         text = TripOrchestrator._compose_body_text({**BASE, "travel_mode": mode})
-        assert body in text
+        for body in bodies:
+            assert body not in html, (mode, body)  # travel box deleted with acts
+            assert body not in text, (mode, body)
 
 
 def test_static_mode_promises_gone_from_all_modes():
@@ -47,13 +39,6 @@ def test_static_mode_promises_gone_from_all_modes():
         for phrase in OLD_PROMISES:
             assert phrase not in html, (mode, phrase)
             assert phrase not in text, (mode, phrase)
-
-
-def test_travel_paragraph_grounded_rule_in_prompt():
-    intent = TripIntent(interests=["mare"], style=["lento"], pace="rilassato")
-    prompt = build_email_prompt(intent, "none", "none", "none", trip=make_trip())
-    assert ("The travel paragraph may name ONLY places present in RESOURCES; "
-            "never invent services (water, drains, fuel, rentals).") in prompt
 
 
 # --- B2: elegant flight titles ---
@@ -84,59 +69,13 @@ def test_no_arrows_in_rendered_flight_names():
         "sections_map": {"flights": [hero, "https://flights.example/other"]},
     }
     html = build_html_email(content)
-    names = re.findall(r'd-name"[^>]*>\s*<a[^>]*>(.*?)</a>', html, re.S)
-    assert len(names) == 2  # hero title + grouped card title
-    for name in names:
-        assert "->" not in name and "→" not in name
-
-
-def test_email_prompt_flight_name_rule_is_elegant():
-    intent = TripIntent(interests=["mare"], style=["lento"], pace="rilassato")
-    prompt = build_email_prompt(intent, "x", "y", "z", trip=make_trip())
-    assert "Volo {airline} · {from} – {to}" in prompt
-    flight_line = next(line for line in prompt.splitlines() if "Volo {airline}" in line)
-    assert "->" not in flight_line and "→" not in flight_line
-
-
-# --- B3: route logic for road/van trips ---
-
-def _intent(mode):
-    return TripIntent(interests=["mare"], style=["lento"], pace="rilassato", travel_mode=mode)
-
-
-PLACES_TWO = ("[P0] Campeggio X — 20 EUR/night — https://p0.example\n"
-              "[P1] Noleggio Y — 50 EUR/night — https://p1.example")
-
-
-def test_route_rule_present_for_road_van_with_two_places():
-    for mode in ("road_trip", "van_life"):
-        prompt = build_email_prompt(_intent(mode), "none", "[M0] Spiaggia — https://m0.example",
-                                    PLACES_TWO, trip=make_trip())
-        assert "giorno 1-2" in prompt
-        assert "grounded ONLY in the picked POI/stay resources" in prompt
-
-
-def test_route_rule_counts_pois_and_stays_together():
-    maps_two = "[M0] Spiaggia — https://m0.example\n[M1] Borgo — https://m1.example"
-    prompt = build_email_prompt(_intent("road_trip"), "none", maps_two,
-                                "no accommodations available", trip=make_trip())
-    assert "giorno 1-2" in prompt
-
-
-def test_route_rule_silent_otherwise():
-    # fixed mode with plenty of places: silent
-    prompt = build_email_prompt(_intent("fixed"), "none", "[M0] X — https://m0.example",
-                                PLACES_TWO, trip=make_trip())
-    assert "giorno 1-2" not in prompt
-    # road trip with a single place: silent
-    prompt = build_email_prompt(_intent("road_trip"), "none", "no points of interest",
-                                "[P0] Solo — https://p0.example", trip=make_trip())
-    assert "giorno 1-2" not in prompt
-    # road trip with nothing: silent
-    prompt = build_email_prompt(_intent("road_trip"), "no flights available",
-                                "no points of interest", "no accommodations available",
-                                trip=make_trip())
-    assert "giorno 1-2" not in prompt
+    assert "easyJet · MXP – INV" in html  # hero logistics, humanized, no doubled Volo
+    assert "Ryanair Bergamo – Edimburgo" in html  # second flight logistics
+    body = html.split("</head>", 1)[-1]
+    assert "MXP ->" not in body and "Bergamo →" not in body
+    assert "departure 2026-12-21" not in body
+    assert html.count(f'href="{hero}"') == 1
+    assert html.count('href="https://flights.example/other"') == 1
 
 
 # --- B4: "Dove noleggiare" rental section ---
@@ -161,16 +100,16 @@ def test_rental_section_renders_for_van_only():
     html = build_html_email(_van_content([_hotel(), _rental("https://rent.example/a")]))
     before, after = html.split("Dove noleggiare il van")
     assert "Van Rent X" not in before and "Van Rent X" in after
-    assert "Hotel X" in before  # stays keep their own group
+    assert "Hotel X" not in html  # unlinked stays render nowhere in acts (no phases)
     assert "https://rent.example/a" in after
 
 
 def test_rental_section_absent_for_non_van_and_without_rentals():
     rental = _rental("https://rent.example/a")
-    # non-van trip: rental stays a normal "Dove stare" card, no rental section
+    # non-van trip: no rental section, unlinked rental renders nowhere (orphan rule)
     html = build_html_email(_van_content([rental], travel_mode="fixed", accommodation_style="hotel"))
     assert "Dove noleggiare" not in html
-    assert "Van Rent X" in html and "Dove stare" in html
+    assert "Van Rent X" not in html
     # van trip without rentals: no section
     html = build_html_email(_van_content([_hotel()]))
     assert "Dove noleggiare" not in html
@@ -191,8 +130,8 @@ def test_rental_section_caps_at_two_cards():
 
 def test_rentals_never_duplicated_between_sections():
     html = build_html_email(_van_content([_hotel(), _rental("https://rent.example/a")]))
-    # title link + "Apri" link per card: exactly one card for the rental
-    assert html.count("https://rent.example/a") == 2
+    # single Apri link per card: exactly one rental card rendered once
+    assert html.count("https://rent.example/a") == 1
 
 
 def test_validate_resources_covers_rental_tagged_places():
@@ -203,13 +142,18 @@ def test_validate_resources_covers_rental_tagged_places():
 
 
 def test_body_text_mirrors_rental_section():
-    text = TripOrchestrator._compose_body_text(
-        _van_content([_hotel(), _rental("https://rent.example/a")]))
+    content = _van_content([_hotel(), _rental("https://rent.example/a")])
+    content["arrival"] = "Atterri la sera."
+    content["scenes"] = [
+        {"title": "Sera", "prose": "Luci calde e sale.", "place_links": []},
+    ]
+    text = TripOrchestrator._compose_body_text(content)
     assert "Dove noleggiare il van:" in text
+    assert text.index("Sera") < text.index("Dove noleggiare il van:")
     after = text.split("Dove noleggiare il van:", 1)[-1]
     assert "https://rent.example/a" in after
-    punti = text.split("Punti di partenza:", 1)[-1].split("Dove noleggiare", 1)[0]
-    assert "Van Rent X" not in punti and "Hotel X" in punti
+    assert "Van Rent X" in after and "80 EUR" in after
+    assert "L'itinerario:" not in text  # phases gone with the acts template
 
 
 # --- B5: appendix only-backed ---
@@ -274,5 +218,3 @@ def test_new_copy_is_one_way():
     html = build_html_email(_van_content([_hotel(), _rental("https://rent.example/a")]))
     assert "rispondi" not in html.lower()
     assert "mailto:" not in html
-    prompt = build_email_prompt(_intent("road_trip"), "none", "[M0] X", PLACES_TWO, trip=make_trip())
-    assert "rispondi" not in prompt.lower()

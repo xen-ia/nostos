@@ -1,7 +1,7 @@
 from src.core.models import TripIntent
 from src.core.prompts import build_intent_prompt
 from tests.fakes import FakeDatabase, FakeLLM, make_trip
-from tests.test_flight_matrix import EMAIL, _patch_searches, _run
+from tests.test_flight_matrix import _patch_searches, _run
 
 
 def test_needs_flights_defaults_true_with_empty_rationale():
@@ -17,7 +17,7 @@ def test_intent_prompt_guides_arrival_vs_local_decision():
 
 
 def _llm_with_intent(intent):
-    return FakeLLM(response=intent, email_response=EMAIL)
+    return FakeLLM(response=intent)
 
 
 async def test_van_life_with_needs_flights_true_probes(monkeypatch):
