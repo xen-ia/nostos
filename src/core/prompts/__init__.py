@@ -195,3 +195,21 @@ def build_dream_prompt(trip_free_text: str, intent: TripIntent, flights_block: s
     VIETATO: filler ('possibile sosta', 'da inserire', 'pratico', 'una base per',
     'coerente con'), aggettivi vuoti da soli ('bello', 'incantevole', 'meraviglioso'),
     frasi su dati mancanti, fasi stirate, carbon-copy del brief."""
+
+
+def build_letter_prompt(free_text: str, intent: TripIntent, places_block: str) -> str:
+    return f"""Scrivi una lettera di viaggio personale, in italiano, come racconto continuo.
+    Brief del viaggiatore: "{free_text}"
+    Interessi: {', '.join(intent.interests) or 'not specified'} — Stile: {', '.join(intent.style) or 'not specified'}
+    Travel mode: {intent.travel_mode or 'not specified'}
+    Luoghi verificati (cita link SOLO da qui):
+    {places_block}
+    REGOLE. Apertura: scena sensoriale di 2-3 frasi. Poi 2 o 3 momenti in prosa continua,
+    ognuno con almeno 2 dettagli sensoriali concreti (luce, cibo, suoni, materia).
+    I fatti del viaggio (destinazione, date, viaggiatori) vanno tessuti NELLA PROSA:
+    mai header burocratici, mai formate tipo 'coppia (2)' — scrivi 'per voi due'.
+    Zone evocabili senza link; ogni NOME PROPRIO di locale o struttura deve avere
+    il suo link verificato. Chiusura: invito al passo umano in 1-2 frasi.
+    VIETATO: elenchi, fasi numerate, prezzi ostentati, filler ('possibile sosta',
+    'da inserire', 'pratico', 'una base per', 'coerente con'), aggettivi vuoti da soli
+    ('bello', 'incantevole', 'meraviglioso'), frasi su dati mancanti."""

@@ -90,6 +90,18 @@ class DreamContent(BaseModel):
     logistics: str = Field(default="", description="Volo+prezzi in una riga sobria, o vuoto")
 
 
+class LetterMoment(BaseModel):
+    prose: str = Field(description="Prosa sensoriale continua, fatti tessuti dentro, mai liste")
+    place_links: list[str] = Field(default_factory=list, description="URL verificati citati nel momento")
+
+
+class LetterContent(BaseModel):
+    subject: str = Field(description="Oggetto breve e personale")
+    opening: str = Field(description="Scena d'apertura sensoriale, 2-3 frasi")
+    moments: list[LetterMoment] = Field(description="2 o 3 momenti")
+    closing: str = Field(description="Invito al passo umano, 1-2 frasi")
+
+
 class DateWindow(BaseModel):
     start: str = Field(description="Inizio finestra candidata, ISO YYYY-MM-DD")
     end: str = Field(description="Fine finestra candidata, ISO YYYY-MM-DD")
