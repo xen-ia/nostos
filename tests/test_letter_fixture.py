@@ -127,8 +127,9 @@ def test_creta_fixture_body_text_mirrors_letter_in_order():
     positions = [body.index(s) for s in order]
     assert positions == sorted(positions), "twin strings must follow HTML order"
     assert "L'itinerario:" not in body  # phases gone with the letter template
-    for link in ("https://voli.it/f1", "https://maps.it/t1", "https://maps.it/s1", "https://stay.it/c1"):
-        assert link in body  # twin: no lost links
+    for link in ("https://maps.it/t1", "https://maps.it/s1", "https://stay.it/c1"):
+        assert body.count(link) == 2  # twin: once in its moment, once in "I luoghi"
+    assert body.count("https://voli.it/f1") == 1  # flight uncited: places list only
 
 
 async def test_compose_letter_builds_resources_from_curated():
