@@ -1,13 +1,13 @@
 # tests/test_email_structure.py
 import re
 
-from src.core.orchestrator import TripOrchestrator, strip_bracket_ids
+from src.core.orchestrator import TripOrchestrator
 from src.core.models import TripIntent
-from src.core.prompts import build_curation_prompt, build_email_prompt
+from src.core.prompts import build_curation_prompt
 from src.services.apis.email import SITE_URL, build_html_email
 from tests.fakes import make_trip
 
-BASE = {"opening": "O.", "understanding": "U.", "resources": [], "cta": "C.",
+BASE = {"opening": "O.", "resources": [], "cta": "C.",
         "honest_note": "N.", "sections_map": {}, "appendix": {"groups": [], "source_links": []}}
 
 
@@ -15,14 +15,20 @@ def test_no_details_no_block_only_anchors():
     html = build_html_email({**BASE, "travel_mode": "van_life", "mobility": ["auto", "van"],
                              "feedback_link": "https://x.example/f?trip_id=1&token=abc"})
     assert "<details" not in html
-    assert "Lascia un feedback" in html
+    assert "Parliamone insieme" in html
     assert "https://x.example/f?trip_id=1&amp;token=abc" in html
 
 
-def test_van_box_has_no_mezzi_line():
-    html = build_html_email({**BASE, "travel_mode": "van_life", "mobility": ["auto", "van"]})
+def test_van_life_has_no_travel_box_but_keeps_rental():
+    content = {**BASE, "travel_mode": "van_life", "mobility": ["auto", "van"],
+               "resources": [{"name": "Van Rent X", "description": "Noleggio van fronte mare",
+                              "price": "80 EUR", "link": "https://rent.example/a", "rental": True}],
+               "sections_map": {"places": ["https://rent.example/a"]},
+               "accommodation_style": "van"}
+    html = build_html_email(content)
     assert "Mezzi" not in html
-    assert "Vita in van" in html  # heading + body prose stay, only the line is gone
+    assert "Vita in van" not in html  # travel box deleted with the acts template
+    assert "Dove noleggiare il van" in html  # rental section stays
 
 
 def test_cta_targets_min_44px():
@@ -32,151 +38,140 @@ def test_cta_targets_min_44px():
     assert cta_pads and min(cta_pads) >= 14  # 14px vertical padding ≈ 44px target with 16px text
 
 
-CARD_CONTENT = {**BASE,
-                "resources": [{"name": "Hotel X", "description": "Nice place",
-                               "price": "100 EUR", "link": "https://h.example/x"}],
-                "sections_map": {"maps": ["https://h.example/x"]}}
+MOMENT_CONTENT = {**BASE,
+                  "opening": "Sbarchi la sera.",
+                  "resources": [{"name": "Hotel X", "description": "",
+                                 "price": "100 EUR", "link": "https://h.example/x"},
+                                {"name": "Taverna Y", "description": "",
+                                 "price": "", "link": "https://y.example/t"}],
+                  "sections_map": {"maps": ["https://h.example/x", "https://y.example/t"]},
+                  "moments": [
+                      {"prose": "Luci calde e sale.",
+                       "place_links": ["https://h.example/x"]},
+                      {"prose": "Cucina vera e mare.",
+                       "place_links": ["https://y.example/t"]},
+                  ],
+                  "places": [{"name": "Taverna Y", "price": "",
+                              "link": "https://y.example/t"}]}
 
 
-def test_cards_use_sibling_anchors_no_nesting():
-    html = build_html_email({**CARD_CONTENT,
-                             "feedback_link": "https://x.example/f"})
+def test_moments_use_sibling_anchors_no_nesting():
+    content = {**MOMENT_CONTENT, "feedback_link": "https://x.example/f"}
+    html = build_html_email(content)
     # No anchor may contain another anchor anywhere in the email.
     assert not re.search(r"<a\b[^>]*>(?:(?!</a>).)*<a\b", html, re.S | re.I)
-    # Card exposes exactly the title link + the Apri link as siblings.
-    cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
-    assert len(cards) == 1
-    assert len(re.findall(r"<a\b", cards[0])) == 2
-    assert "Hotel X" in cards[0] and "Apri &rarr;" in cards[0]
+    # Moments are pure prose; named links live only in I luoghi.
+    assert html.count('href="https://h.example/x"') == 0
+    assert html.count('href="https://y.example/t"') == 1
+    assert "Taverna Y" in html
+    assert '<table class="card-frame"' not in html
 
 
 def test_reply_gone_in_all_modes():
     with_link = build_html_email({**BASE, "feedback_link": "https://x.example/f"})
     assert "Rispondi per continuare" not in with_link
     assert "mailto:" not in with_link
-    assert "Lascia un feedback" in with_link
+    assert "Parliamone insieme" in with_link
     without_link = build_html_email({**BASE})
     assert "Rispondi per continuare" not in without_link
     assert "mailto:" not in without_link
-    assert "Lascia un feedback" not in without_link
+    assert "Parliamone insieme" not in without_link
 
 
 def test_no_empty_button_cells():
     single = build_html_email({**BASE, "feedback_link": "https://x.example/f"})
     assert single.count('class="btn-cell"') == 1
-    assert "Lascia un feedback" in single
+    assert "Parliamone insieme" in single
     none = build_html_email({**BASE})
     assert 'class="btn-cell"' not in none
-    assert "Lascia un feedback" not in none
+    assert "Parliamone insieme" not in none
     assert "Rispondi per continuare" not in none
     assert "mailto:" not in none
 
 
 def test_cta_copy_is_one_way():
     from src.core.orchestrator import CTA
-    assert CTA == "Com'è andata? Lasciaci un feedback."
+    assert CTA == "Il prossimo passo è umano: dimmi cosa cambiare e ne parliamo insieme."
     html = build_html_email({**BASE, "cta": CTA,
                              "feedback_link": "https://x.example/f"})
     assert "IL TUO PARERE" in html.upper()
-    assert "IL PROSSIMO PASSO" not in html.upper()
+    assert "IL PROSSIMO PASSO È UMANO" in html.upper()
     assert "rispondi" not in html.lower()
 
 
-def _bracket_content() -> dict:
-    return {
-        **BASE,
-        "opening": "[F0] Collegamento di partenza per il nord.",
-        "understanding": "Cerchi mare [M12] e relax [P3] lontano dalle folle.",
-        "resources": [{
-            "name": "[F0] easyJet, MXP -> INV",
-            "description": "Volo [F0] diretto al mattino",
-            "price": "[F0] 196 EUR",
-            "link": "https://f.example/abc",
-        }],
-        "sections_map": {"flights": ["https://f.example/abc"]},
-    }
-
-
-def test_bracket_ids_stripped_from_html_and_text():
-    cleaned = strip_bracket_ids(_bracket_content())
-    html = build_html_email(cleaned)
-    text = TripOrchestrator._compose_body_text(cleaned)
-    for tag in ("[F0]", "[M12]", "[P3]"):
-        assert tag not in html
-        assert tag not in text
-    assert "Collegamento di partenza per il nord." in html
-    assert "Collegamento di partenza per il nord." in text
-    assert "196 EUR" in html  # price value survives, only the ID is stripped
-
-
-def test_hero_flight_excluded_from_resource_groups():
+def test_moment_renders_prose_with_single_vedi_link():
     link = "https://flights.example/abc"
+    maps_link = "https://maps.example/taverna"
     content = {
         **BASE,
-        "resources": [{"name": "Volo easyJet Milano → Inverness", "description": "Diretto",
-                       "price": "196 EUR", "link": link}],
-        "sections_map": {"flights": [link]},
+        "resources": [{"name": "Volo easyJet · Milano – Inverness", "description": "",
+                       "price": "196 EUR", "link": link},
+                      {"name": "Taverna X", "description": "",
+                       "price": "", "link": maps_link}],
+        "sections_map": {"flights": [link], "maps": [maps_link]},
+        "moments": [{"prose": "Cucina vera e mare calmo.",
+                    "place_links": [maps_link]}],
+        "places": [{"name": "Volo easyJet · Milano – Inverness", "price": "196 EUR", "link": link},
+                   {"name": "Taverna X", "price": "", "link": maps_link}],
     }
     html = build_html_email(content)
-    assert "Come arrivare" in html and "Vedi il volo" in html  # hero still renders
-    assert "Voli" not in html  # hero flight must not reappear as a grouped card
+    assert "Cucina vera" in html  # moment renders, prose only
+    assert "Come arrivare" not in html  # no arrival hero block anymore
+    assert "I luoghi" in html and "196 EUR" in html  # places list carries flight + price
+    assert '<table class="card-frame"' not in html  # flight never a grouped card
+    assert html.count(f'href="{maps_link}"') == 1  # places list only
+    assert html.count(f'href="{link}"') == 1  # places list only
     cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
     assert all(link not in card for card in cards)
 
 
-def test_hero_flight_excluded_but_other_flights_grouped():
+def test_flight_links_live_only_in_places_list():
     hero = "https://flights.example/hero"
     other = "https://flights.example/other"
     content = {
         **BASE,
         "resources": [
-            {"name": "Volo easyJet Milano → Inverness", "description": "", "price": "",
+            {"name": "Volo easyJet · Milano – Inverness", "description": "", "price": "",
              "link": hero},
-            {"name": "Volo Ryanair Bergamo → Edimburgo", "description": "", "price": "",
+            {"name": "Volo Ryanair · Bergamo – Edimburgo", "description": "", "price": "",
              "link": other},
         ],
         "sections_map": {"flights": [hero, other]},
+        "moments": [{"prose": "Luci calde e sale.", "place_links": []}],
+        "places": [{"name": "Volo easyJet · Milano – Inverness", "price": "", "link": hero},
+                   {"name": "Volo Ryanair · Bergamo – Edimburgo", "price": "", "link": other}],
     }
     html = build_html_email(content)
-    assert "Voli" in html
+    assert "L'itinerario" not in html  # phases gone with the letter template
     assert other in html
-    cards = re.findall(r'<table class="card-frame".*?</table>', html, re.S)
-    assert all(hero not in card for card in cards)
+    assert html.count(f'href="{hero}"') == 1  # places list only, never a stop
+    assert '<table class="card-frame"' not in html  # no box grid anymore
 
 
 def test_raw_flight_name_humanized_and_price_deduped():
+    from src.services.apis.email import _render_card
     hero = "https://flights.example/hero"
     other = "https://flights.example/other"
-    content = {
-        **BASE,
-        "resources": [
-            {"name": "easyJet, MXP -> INV, departure 2026-12-21 10:35, 196 EUR",
-             "description": "Partenza 2026-12-21, 196 EUR tutto incluso",
-             "price": "196 EUR", "link": hero},
-            {"name": "Ryanair, BGY -> EDI, departure 2026-12-21 07:00, 250 EUR",
-             "description": "Alba a Edimburgo, 250 EUR con bagaglio",
-             "price": "250 EUR", "link": other},
-        ],
-        "sections_map": {"flights": [hero, other]},
-    }
-    html = build_html_email(content)
-    assert "departure 2026-12-21" not in html
-    assert "Volo easyJet" in html
-    assert "Volo Ryanair" in html
-    assert html.count("196 EUR") == 1  # price pill only, description duplicate stripped
-    assert html.count("250 EUR") == 1
+    hero_html = _render_card(
+        {"name": "easyJet, MXP -> INV, departure 2026-12-21 10:35, 196 EUR",
+         "description": "Partenza 2026-12-21, 196 EUR tutto incluso",
+         "price": "196 EUR", "link": hero},
+        is_flight=True)
+    assert "departure 2026-12-21" not in hero_html
+    assert "easyJet · MXP – INV" in hero_html
+    assert hero_html.count("196 EUR") == 1  # price pill only, description duplicate stripped
+    other_html = _render_card(
+        {"name": "Ryanair, BGY -> EDI, departure 2026-12-21 07:00, 250 EUR",
+         "description": "Alba a Edimburgo, 250 EUR con bagaglio",
+         "price": "250 EUR", "link": other},
+        is_flight=True)
+    assert "Ryanair · BGY – EDI" in other_html
+    assert other_html.count("250 EUR") == 1
 
 
 def test_footer_url_single_occurrence():
     html = build_html_email({**BASE})
     assert html.count(SITE_URL) == 1
-
-
-def test_email_prompt_requires_human_flight_titles():
-    intent = TripIntent(interests=["mare"], style=["lento"], pace="rilassato")
-    prompt = build_email_prompt(intent, "easyJet, MXP -> INV", "none", "none",
-                                trip=make_trip())
-    assert "Volo {airline}" in prompt
 
 
 def test_curation_prompt_prefers_matching_poi():
@@ -282,55 +277,3 @@ def test_build_appendix_excludes_shown_and_caps_3():
                   "https://s.example/s2", "https://s.example/p1", "https://s.example/p2"}
     empty = TripOrchestrator._build_appendix(research, exclude_links=all_corpus)
     assert empty["groups"] == []
-
-
-def test_hero_force_included_when_llm_omits_flight():
-    curated = {"flights": [{"airline": "SKY express", "from": "MXP", "to": "HER",
-                             "departure_date": "2026-12-15", "price_eur": 222,
-                             "link": "https://example.com/f"}],
-               "maps": [], "places": []}
-    content = {"resources": [{"name": "Taverna", "description": "", "price": "",
-                              "link": "https://example.com/t"}]}
-    out = TripOrchestrator._ensure_flight_hero(content, curated)
-    links = [r["link"] for r in out["resources"]]
-    assert "https://example.com/f" in links
-    hero = next(r for r in out["resources"] if r["link"] == "https://example.com/f")
-    assert hero["price"] == "222 EUR"
-    assert "SKY" in hero["name"]
-
-
-def test_hero_not_duplicated_when_present():
-    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
-                             "departure_date": "d", "price_eur": 100,
-                             "link": "https://example.com/f"}],
-               "maps": [], "places": []}
-    content = {"resources": [{"name": "Volo A", "description": "", "price": "100 EUR",
-                              "link": "https://example.com/f"}]}
-    out = TripOrchestrator._ensure_flight_hero(content, curated)
-    assert [r["link"] for r in out["resources"]].count("https://example.com/f") == 1
-
-
-def test_flight_price_overwritten_from_curated():
-    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
-                             "departure_date": "d", "price_eur": 222,
-                             "link": "https://example.com/f"}],
-               "maps": [], "places": []}
-    content = {"resources": [{"name": "Volo A", "description": "", "price": "999 EUR",
-                              "link": "https://example.com/f"},
-                             {"name": "Taverna", "description": "", "price": "cena 30 EUR",
-                              "link": "https://example.com/t"}]}
-    out = TripOrchestrator._apply_curated_flight_prices(content, curated)
-    prices = {r["link"]: r["price"] for r in out["resources"]}
-    assert prices["https://example.com/f"] == "222 EUR"
-    assert prices["https://example.com/t"] == "cena 30 EUR"
-
-
-def test_flight_price_blanked_when_no_curated_price():
-    curated = {"flights": [{"airline": "A", "from": "X", "to": "Y",
-                             "departure_date": "d", "price_eur": None,
-                             "link": "https://example.com/f"}],
-               "maps": [], "places": []}
-    content = {"resources": [{"name": "Volo A", "description": "", "price": "100 EUR",
-                              "link": "https://example.com/f"}]}
-    out = TripOrchestrator._apply_curated_flight_prices(content, curated)
-    assert out["resources"][0]["price"] == ""

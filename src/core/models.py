@@ -1,4 +1,4 @@
-"""LLM tool-call extraction schemas: TripIntent and EmailContent."""
+"""LLM tool-call extraction schemas: TripIntent and letter content."""
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -71,44 +71,26 @@ class TripIntent(BaseModel):
             "Nel dubbio con paesi diversi → True."
         ),
     )
+    budget_sensitive: bool = Field(
+        default=False,
+        description="True se il budget è esplicitamente ristretto (limitato, max, economico)",
+    )
     flight_rationale: str = Field(
         default="",
         description="In italiano: perché i voli servono oppure no per questo viaggio",
     )
 
 
-class EmailResource(BaseModel):
-    name: str = Field(
-        description="Nome della risorsa, preso PAROLA PER PAROLA dai dati reali forniti"
-    )
-    description: str = Field(
-        default="",
-        description="Breve dettaglio descrittivo in italiano",
-    )
-    price: str = Field(
-        default="",
-        description="Prezzo indicato, es. '320 EUR' o '95 EUR/notte', preso dai dati reali",
-    )
-    link: str = Field(description="URL dalla risorsa reale fornita")
+class LetterMoment(BaseModel):
+    prose: str = Field(description="Prosa sensoriale continua, fatti tessuti dentro, mai liste")
+    place_links: list[str] = Field(default_factory=list, description="URL verificati citati nel momento")
 
 
-class EmailContent(BaseModel):
-    subject: str = Field(description="Oggetto dell'email, breve e personale")
-    opening: str = Field(
-        description="Una sola frase d'attacco non banale che aggancia subito il lettore. Non presentarti come AI."
-    )
-    understanding: str = Field(
-        description=(
-            "1-2 frasi secche che dimostrano di aver capito cosa cerca il viaggiatore: riprendi interessi, "
-            "stile e ritmo della richiesta, con vicinanza ma senza prolissità."
-        )
-    )
-    resources: list[EmailResource] = Field(
-        description=(
-            "3 spunti concreti, tra voli/poi/alloggi forniti, presi PAROLA PER PAROLA dai dati reali. "
-            "Niente di inventato. Se i dati sono insufficienti, inserisci meno voci."
-        )
-    )
+class LetterContent(BaseModel):
+    subject: str = Field(description="Oggetto breve e personale")
+    opening: str = Field(description="Scena d'apertura sensoriale, 2-3 frasi")
+    moments: list[LetterMoment] = Field(description="2 o 3 momenti")
+    closing: str = Field(description="Invito al passo umano, 1-2 frasi")
 
 
 class DateWindow(BaseModel):
@@ -159,16 +141,3 @@ class ResolvedDestinations(BaseModel):
 
 class DepartureAirports(BaseModel):
     codes: list[str] = Field(default_factory=list, description="1..4 codici IATA candidati di partenza")
-
-
-class DayStop(BaseModel):
-    day_label: str = Field(description="Intervallo + zona, es. 'Giorni 1-7 · Heraklion e dintorni'")
-    flight_refs: list[int] = Field(default_factory=list, description="Indici zero-based nei voli curati")
-    poi_refs: list[int] = Field(default_factory=list, description="Indici zero-based nei POI curati")
-    stay_refs: list[int] = Field(default_factory=list, description="Indici zero-based negli alloggi curati")
-    transition: str = Field(default="", description="Logica spostamento in italiano, mai URL")
-
-
-class TripPlan(BaseModel):
-    days: list[DayStop] = Field(default_factory=list, description="Max 7 voci condensate")
-    rationale: str = Field(default="", description="Perché questa articolazione, in italiano")

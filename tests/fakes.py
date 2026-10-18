@@ -19,21 +19,21 @@ def make_store(ttl_seconds: int = 86400) -> TripStore:
 class FakeLLM(LLMClient):
     """Deterministic in-memory LLM with configurable per-model responses."""
 
-    def __init__(self, response=None, email_response=None, error: Exception | None = None,
+    def __init__(self, response=None, error: Exception | None = None,
                  responses: dict[type, BaseModel] | None = None,
-                 email_responses: list[BaseModel] | None = None):
+                 letter_responses: list[BaseModel] | None = None):
         self._response = response
-        self._email_response = email_response or response
         self._error = error
         self._responses = responses or {}
-        self._email_responses = list(email_responses) if email_responses else []
+        self._letter_responses = list(letter_responses) if letter_responses else []
         self.calls: list[tuple[str, type]] = []
+        self.calls_kwargs: list[dict] = []
 
-    async def extract[T: BaseModel](self, prompt: str, model: type[T]) -> T:
+    async def extract[T: BaseModel](self, prompt: str, model: type[T], max_tokens: int = 1024) -> T:
         from src.core.models import (
             Curation,
             DepartureAirports,
-            EmailContent,
+            LetterContent,
             PeriodPlan,
             ResolvedDestinations,
             TargetQueries,
@@ -41,14 +41,27 @@ class FakeLLM(LLMClient):
         )
 
         self.calls.append((prompt, model))
+        self.calls_kwargs.append({"model": model, "max_tokens": max_tokens})
         if self._error is not None:
             raise self._error
+        if model is LetterContent and self._letter_responses:
+            return self._letter_responses.pop(0)
         if model in self._responses:
             return self._responses[model]
-        if model is EmailContent:
-            if self._email_responses:
-                return self._email_responses.pop(0)
-            return self._email_response
+        if model is LetterContent:
+            return LetterContent(
+                subject="Il tuo viaggio a Tokyo",
+                opening="Atterri a Tokyo di sera, il vento sa di sale.",
+                moments=[
+                    {"prose": "la luce bassa di settembre accende le lanterne rosse mentre l'incenso riempie il viale e la folla attraversa piano il tempio antico",
+                     "place_links": ["https://example.com/poi"]},
+                    {"prose": "il futon profuma di tatami fresco e la cena di pesce grigliato arriva con il tè caldo mentre fuori la città abbassa le luci",
+                     "place_links": ["https://example.com/hotel"]},
+                ],
+                closing="Ne parliamo insieme.",
+            )
+        if model in self._responses:
+            return self._responses[model]
         if model is TripIntent:
             return self._response
         if model is PeriodPlan:
