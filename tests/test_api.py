@@ -9,7 +9,7 @@ from src.api.middleware import RequestIDMiddleware
 from src.api.routers import trips as trips_router
 from src.core.schemas import TripCreateRequest, TripStatus
 from tests.fakes import FakeDatabase, FakeLLM, make_store
-from tests.test_orchestrator import EMAIL, INTENT
+from tests.test_orchestrator import INTENT
 
 
 class FakeArq:
@@ -23,7 +23,7 @@ class FakeArq:
 def make_app(store=None, arq=None, api_token: str = "", rate_limit_max: int = 10, window: int = 60, db=None, whitelist_daily_max: int = 5):
     store = store or make_store()
     arq = arq or FakeArq()
-    llm = FakeLLM(response=INTENT, email_response=EMAIL)
+    llm = FakeLLM(response=INTENT)
 
     app = FastAPI()
     app.state.redis = store._redis

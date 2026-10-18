@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-import re
 
 from src.core.models import TripIntent
 from src.core.schemas import TripResponse
@@ -60,7 +59,11 @@ def build_period_prompt(trip: TripResponse, intent: TripIntent, today_iso: str) 
     """
 
 
-def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: str) -> str:
+def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: str,
+                        lang: str = "it") -> str:
+    from src.services.tools.language import language_name
+
+    query_lang = language_name(lang)
     return f"""You plan targeted research for this trip. You are given exploration anchors
     (areas, landmark types) discovered for the destination.
 
@@ -79,7 +82,7 @@ def build_target_prompt(trip: TripResponse, intent: TripIntent, anchors_block: s
     USER FREE TEXT (verbatim):
     "{trip.free_text}"
 
-    Propose at most 4 targeted Google-Maps search queries (same language as the destination)
+    Propose at most 4 targeted Google-Maps search queries (in {query_lang})
     that dig INTO the anchors along the brief's interests, style, travel mode and mobility —
     e.g. specific neighborhoods, niche venues, quiet alternatives, van-friendly spots,
     ports for sailing, campsites along routes. Each query must derive from an anchor.
@@ -175,77 +178,20 @@ def build_geo_prompt(trip: TripResponse, intent: TripIntent) -> str:
     """
 
 
-def build_email_prompt(
-    intent: TripIntent,
-    flights_block: str,
-    maps_block: str,
-    places_block: str,
-    trip: TripResponse | None = None,
-    resolve_rationale: str = "",
-) -> str:
-    travel_mode = (intent.travel_mode or "").lower()
-    grounded_stops = len(re.findall(r"\[(?:M|P)\d+\]", f"{maps_block}\n{places_block}"))
-    route_rule = ""
-    if travel_mode in ("road_trip", "van_life") and grounded_stops >= 2:
-        route_rule = (
-            "\n    - Route articulation (road/van trip with ≥2 grounded stops): include a short "
-            "day-by-day articulation grounded ONLY in the picked POI/stay resources above "
-            '(e.g. "giorno 1-2: X → Y"); never generic filler like "alternate short drives".'
-        )
-    return f"""Write the trip email for this traveler.
-
-    TRIP CONTEXT (only these preferences exist — never invent others):
-    Interests: {', '.join(intent.interests) or 'not specified'}
-    Style sought: {', '.join(intent.style) or 'not specified'}
-    Pace: {intent.pace or 'not specified'}
+def build_letter_prompt(free_text: str, intent: TripIntent, places_block: str) -> str:
+    return f"""Scrivi una lettera di viaggio personale, in italiano, come racconto continuo.
+    Brief del viaggiatore: "{free_text}"
+    Interessi: {', '.join(intent.interests) or 'not specified'} — Stile: {', '.join(intent.style) or 'not specified'}
     Travel mode: {intent.travel_mode or 'not specified'}
-    Accommodation style: {intent.accommodation_style or 'not specified'}
-    Mobility: {', '.join(intent.mobility_preferences) or 'not specified'}
-    Travelers count: {trip.travelers_count if trip else 'not specified'}
-    Travelers type: {trip.travelers_type if trip else 'not specified'}
-    Budget: {trip.budget_amount if trip else 'not specified'}
-{f"\n    Focus scelto dal sistema: {resolve_rationale}\n" if resolve_rationale else ""}
-    USER FREE TEXT (verbatim):
-    "{trip.free_text if trip else ''}"
-
-    RESOURCES AVAILABLE (IDs in brackets; cite ONLY these):
-    Flights:
-    {flights_block}
-
-    Points of interest:
-    {maps_block}
-
-    Accommodation:
+    Luoghi verificati (cita link SOLO da qui, mai incollare URL grezzi nella prosa):
     {places_block}
-
-    COMPOSITION RULES:
-    - If travel_mode is 'road_trip' or 'van_life': include a "Come muoversi" section explaining the route logic, daily drives, overnight stops; do NOT list bare flight links if they don't fit the mode.
-    - If travel_mode is 'sailing': include a "Navigazione" section with ports, charter info, coastal hops.
-    - If accommodation_style is 'van' or 'camping': show overnight stops/campsites, not hotel cards.
-    - The travel paragraph may name ONLY places present in RESOURCES; never invent services (water, drains, fuel, rentals).
-    - Flight resource `name` must be human-shaped — "Volo {{airline}} · {{from}} – {{to}}"
-      (e.g. "Volo easyJet · Milano – Inverness") — with date/price details in `description`,
-      never the raw data line above.{route_rule}
-    - NEVER print internal IDs like [M0], [P2] in the email — cite only bracket IDs from the RESOURCES above.
-    - If mobility includes 'auto'/'moto'/'barca': weave a short practical paragraph about getting around locally.
-    """
-
-
-def build_plan_prompt(trip, intent, flights_block: str, maps_block: str, places_block: str, trip_days: int) -> str:
-    return f"""Articola questo viaggio in fasi visitabili per l'email.
-    Durata: {trip_days} giorni. Travel mode: {intent.travel_mode or 'not specified'}.
-    Interessi: {', '.join(intent.interests) or 'not specified'}.
-    Risorse curate (riferisci SOLO questi indici zero-based per categoria):
-    Voli:
-    {flights_block}
-    POI:
-    {maps_block}
-    Alloggi:
-    {places_block}
-    Regole: max 7 voci che coprono arrivo, permanenza e rientro; ogni voce 1-3 refs totali;
-    ogni tappa in UNA sola voce (mai ripetere lo stesso posto in due fasi);
-    se non ci sono voli curati, non nominare mai voli o mancanze (transizioni solo sul percorso);
-    day_label con intervallo + zona (es. 'Giorni 1-7 · Heraklion e dintorni');
-    transition di una riga su spostamenti/pernottamenti, senza inventare servizi e SENZA url.
-    Per fixed preferisci fasi per zone; per van_life/road_trip tratte con pernottamenti a bordo;
-    per sailing tratte costiere. Rispondi solo con le voci utili."""
+    REGOLE. Apertura: scena sensoriale di 2-3 frasi. Poi 2 o 3 momenti in prosa continua,
+    ognuno con almeno 2 dettagli sensoriali concreti (luce, cibo, suoni, materia).
+    I fatti del viaggio (destinazione, date, viaggiatori) vanno tessuti NELLA PROSA:
+    mai header burocratici, mai formate tipo 'coppia (2)' — scrivi 'per voi due'.
+    Zone evocabili senza link; ogni NOME PROPRIO di locale o struttura deve avere
+    il suo link verificato. Cita almeno 4 link verificati DISTINTI dalla lista,
+    distribuiti tra i momenti. Chiusura: invito al passo umano in 1-2 frasi.
+    VIETATO: elenchi, fasi numerate, prezzi ostentati, filler ('possibile sosta',
+    'da inserire', 'pratico', 'una base per', 'coerente con'), aggettivi vuoti da soli
+    ('bello', 'incantevole', 'meraviglioso'), frasi su dati mancanti."""

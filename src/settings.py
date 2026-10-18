@@ -52,9 +52,9 @@ class Settings(BaseSettings):
     gpt_model: str = "gpt-5.6-luna"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b-instruct"
-    decision_provider: str = "llm-fallback"
+    decision_provider: str = "openai"
     typesafe_api_key: str = ""
-    decision_model: str = "jev-1.13.0"
+    decision_model: str = ""
     decision_timeout: float = 5.0
 
     # STT

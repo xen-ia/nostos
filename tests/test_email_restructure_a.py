@@ -6,8 +6,6 @@ from src.core.orchestrator import TripOrchestrator
 from src.core.prompts import build_curation_prompt
 from tests.fakes import FakeDatabase, FakeEmailSender, FakeLLM, make_store, make_trip
 
-from tests.test_orchestrator import EMAIL
-
 
 def _van_intent(**overrides):
     base = dict(destination="Crete", interests=[], style=["lento"],
@@ -62,7 +60,6 @@ async def test_curated_rationale_stored_in_package(monkeypatch):
     trip = await store.create(make_trip())
     llm = FakeLLM(
         response=TripIntent(destination="Tokyo", interests=["cibo"]),
-        email_response=EMAIL,
         responses={Curation: Curation(
             flight_indices=[0], poi_indices=[0], stay_indices=[0],
             rationale="Scelti per cibo locale e ritmo lento")},

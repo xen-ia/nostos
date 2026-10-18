@@ -57,6 +57,14 @@ uv run python -m src.infrastructure.worker --gpt --serpapi-timeout 180 --email-t
 
 and send a request from the mock frontend at [https://xen-ia.github.io/nostos/](https://xen-ia.github.io/nostos/).
 
+**Decision provider.** Trip routing (travel mode, whether flights are needed, pace, crowds, stay fit, budget) goes through typed decisions selected by `NOSTOS_DECISION_PROVIDER`:
+
+- `openai` (default) — OpenAI Decisions API (`gpt-6-luna`), reuses `NOSTOS_OPENAI_API_KEY`.
+- `jev` — TypeSafe Jev (`jev-1.13.0`), needs `NOSTOS_TYPESAFE_API_KEY`.
+- `llm-fallback` — the previous LLM path, no extra key.
+
+`NOSTOS_DECISION_MODEL` overrides the model; leave it empty to use the provider's pinned one. With a missing key, the pipeline silently keeps the LLM path.
+
 #### CLI Test
 Instead, you can test locally by sending a curl request
 ```bash
@@ -150,8 +158,8 @@ Follow a trip and you will meet every layer:
      accommodations (`src/services/tools/`). A category with no valid results
      is dropped; if everything comes back empty, the trip stops and no email
      is sent.
-   - **Composition** — a second LLM call writes the email (`EmailContent`
-     schema) against a strict editorial voice (`src/core/prompts/system_prompt.md`),
+    - **Composition** — a second LLM call writes the email (`LetterContent`
+      schema via `_compose_letter`) against a strict editorial voice (`src/core/prompts/system_prompt.md`),
      using *only* the researched resources — nothing invented.
    - **Delivery** — Resend sends the email. The history is persisted in
      Postgres with status, the model used, and the app version.

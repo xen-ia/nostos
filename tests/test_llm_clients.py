@@ -50,7 +50,62 @@ def test_anthropic_extract_parses_tool_use():
     assert intent.destination == "Tokyo"
 
 
+def test_openai_extract_passes_max_tokens():
+    client = OpenAIClient(api_key="x", model="m")
+    seen = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            seen.update(kwargs)
+            return _FakeResponse([_Block("function_call", name="extract",
+                                          arguments='{"destination": "Roma"}')])
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    client._client = FakeOpenAI()
+    import asyncio
+    intent = asyncio.run(client.extract("prompt", TripIntent, max_tokens=2048))
+    assert intent.destination == "Roma"
+    assert seen["max_output_tokens"] == 2048
+
+
+def test_openai_extract_defaults_max_tokens_1024():
+    client = OpenAIClient(api_key="x", model="m")
+    seen = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            seen.update(kwargs)
+            return _FakeResponse([_Block("function_call", name="extract",
+                                          arguments='{"destination": "Roma"}')])
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    client._client = FakeOpenAI()
+    import asyncio
+    asyncio.run(client.extract("prompt", TripIntent))
+    assert seen["max_output_tokens"] == 1024
+
+
 def test_openai_missing_function_call_raises_descriptive_error():
+    client = OpenAIClient(api_key="x", model="m")
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            return _FakeResponse([_Block("message", role="assistant", content="nothing")])
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    client._client = FakeOpenAI()
+    with pytest.raises(LLMToolUseError):
+        import asyncio
+        asyncio.run(client.extract("prompt", TripIntent))
     client = OpenAIClient(api_key="x", model="m")
 
     class FakeResponses:
